@@ -1,0 +1,77 @@
+name: Bug 报告
+description: 报告一个可以复现的问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！提交前请先搜索是否已有相同 issue。
+        本项目由 AI 生成（见 [AI-DISCLOSURE.md](../AI-DISCLOSURE.md)），如涉及代码实现可一并附上你的分析。
+  - type: input
+    id: version
+    attributes:
+      label: SoundWheel 版本
+      description: 设置窗口「关于」页或文件名/发行版标签
+      placeholder: v1.0.0
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 系统环境
+      description: Windows 版本、显示缩放比例、Soundpad 版本
+      placeholder: Windows 11 26200 / 150% / Soundpad 4.4
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 唤出模式
+      options:
+        - 按住模式（松开播放）
+        - 点按模式（点击播放）
+        - 自动降级（键状态不可见）
+        - 不确定
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 启动 Soundpad 与 SoundWheel
+        2. 按住 Ctrl+Alt+W
+        3. 移动到外圈某个音效后松开
+        4. ……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志片段
+      description: |
+        默认位于 %APPDATA%\SoundWheel\soundwheel.log（或用 --data 指定的目录）。
+        请只贴相关片段，并删除可能含个人信息的内容。
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 确认
+      options:
+        - label: 我已搜索过现有 issue
+          required: true
+        - label: 我已在 Soundpad 运行中的情况下复现
+          required: false

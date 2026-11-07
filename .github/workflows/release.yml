@@ -1,0 +1,37 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 编译（系统自带 csc）
+        shell: cmd
+        run: call build.cmd
+
+      - name: 生成发布说明
+        shell: pwsh
+        run: |
+          "SoundWheel 构建产物（GitHub Actions，系统自带 csc 编译）。" | Out-File note.md -Encoding utf8
+
+      - name: 发布
+        uses: softprops/action-gh-release@v2
+        with:
+          name: SoundWheel ${{ github.ref_name }}
+          body_path: note.md
+          files: |
+            dist/SoundWheel.exe
+            dist/MockSoundpad.exe
+          fail_on_unmatched_files: false
+          draft: false
+          prerelease: false

@@ -1,0 +1,161 @@
+{
+  "hotkey": {
+    "mods": 3,
+    "vk": 87,
+    "text": "Ctrl + Alt + W"
+  },
+  "toggleMode": false,
+  "playToMic": true,
+  "playToSpeaker": true,
+  "showToast": true,
+  "autoStart": false,
+  "animations": true,
+  "scale": 1,
+  "accent": "#5B8CFF",
+  "innerCount": 8,
+  "outerCount": 12,
+  "inner": [
+    {
+      "index": 1,
+      "title": "开场音效",
+      "isSet": true
+    },
+    {
+      "index": 2,
+      "title": "笑死我了",
+      "isSet": true
+    },
+    {
+      "index": 3,
+      "title": "鼓掌",
+      "isSet": true
+    },
+    {
+      "index": 4,
+      "title": "尴尬",
+      "isSet": true
+    },
+    {
+      "index": 5,
+      "title": "胜利",
+      "isSet": true
+    },
+    {
+      "index": 6,
+      "title": "失败",
+      "isSet": true
+    },
+    {
+      "index": 7,
+      "title": "汪汪",
+      "isSet": true
+    },
+    {
+      "index": 8,
+      "title": "喵喵",
+      "isSet": true
+    },
+    {
+      "index": 0,
+      "title": "",
+      "isSet": false
+    },
+    {
+      "index": 0,
+      "title": "",
+      "isSet": false
+    },
+    {
+      "index": 0,
+      "title": "",
+      "isSet": false
+    },
+    {
+      "index": 0,
+      "title": "",
+      "isSet": false
+    }
+  ],
+  "outer": [
+    {
+      "index": 9,
+      "title": "警报",
+      "isSet": true
+    },
+    {
+      "index": 10,
+      "title": "倒计时",
+      "isSet": true
+    },
+    {
+      "index": 11,
+      "title": "掌声",
+      "isSet": true
+    },
+    {
+      "index": 12,
+      "title": "嘘声",
+      "isSet": true
+    },
+    {
+      "index": 13,
+      "title": "叮",
+      "isSet": true
+    },
+    {
+      "index": 14,
+      "title": "爆炸",
+      "isSet": true
+    },
+    {
+      "index": 15,
+      "title": "鼓点",
+      "isSet": true
+    },
+    {
+      "index": 16,
+      "title": "雨声",
+      "isSet": true
+    },
+    {
+      "index": 17,
+      "title": "枪声",
+      "isSet": true
+    },
+    {
+      "index": 18,
+      "title": "脚步",
+      "isSet": true
+    },
+    {
+      "index": 19,
+      "title": "门铃",
+      "isSet": true
+    },
+    {
+      "index": 20,
+      "title": "欢呼",
+      "isSet": true
+    },
+    {
+      "index": 0,
+      "title": "",
+      "isSet": false
+    },
+    {
+      "index": 0,
+      "title": "",
+      "isSet": false
+    },
+    {
+      "index": 0,
+      "title": "",
+      "isSet": false
+    },
+    {
+      "index": 0,
+      "title": "",
+      "isSet": false
+    }
+  ]
+}

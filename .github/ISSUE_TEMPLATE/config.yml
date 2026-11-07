@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用问题 / 讨论
+    url: https://github.com/Focold/soundpad-wheel/discussions
+    about: 一般性的使用疑问建议先看 README 的「故障排查」章节
+  - name: 安全问题
+    url: https://github.com/Focold/soundpad-wheel/security/advisories/new
+    about: 请勿公开提交漏洞细节，参见 SECURITY.md

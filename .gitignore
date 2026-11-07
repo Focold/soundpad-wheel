@@ -1,0 +1,21 @@
+# build output
+dist/
+*.exe
+*.pdb
+*.zip
+SoundWheelData/
+
+# local config / logs / screenshots
+testdata/*.log
+testdata/*.png
+testdata/*.out
+testdata/*.err
+*.log
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+[Tt]est[Rr]esult*/

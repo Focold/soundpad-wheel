@@ -1,0 +1,34 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 查看构建环境
+        shell: cmd
+        run: |
+          dir "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+
+      - name: 编译（系统自带 csc）
+        shell: cmd
+        run: call build.cmd
+
+      - name: 校验产物
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist\SoundWheel.exe")) { throw "缺少 dist\SoundWheel.exe" }
+          Get-ChildItem dist | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SoundWheel
+          path: dist/
+          if-no-files-found: error
