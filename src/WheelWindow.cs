@@ -94,6 +94,22 @@ namespace SoundWheel
         private Point _cursorSynced;
         private Point _lastCursorSample;
         private DateTime _lastCursorChange;
+        private bool _frameDirty;
+        private DateTime _lastRawDelta = DateTime.MinValue;
+        private readonly System.Diagnostics.Stopwatch _frameWatch = new System.Diagnostics.Stopwatch();
+        private double _frameSum;
+        private int _frameCount;
+        private double _frameMax;
+        private bool _rendering;
+        private DateTime _lastRenderAt = DateTime.MinValue;
+        private Bitmap _bgCache;
+        private Bitmap _labelCache;
+        private Bitmap _composed;
+        private bool _cacheDirty = true;
+        private bool _composedDirty = true;
+        private Font _innerFont;
+        private Font _outerFont;
+        private Font _hubFont;
 
         public event Action<WheelItem> PlayRequested;
 
@@ -109,7 +125,7 @@ namespace SoundWheel
             DoubleBuffered = true;
             SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
 
-            _timer.Interval = 15;
+            _timer.Interval = 10;
             _timer.Tick += OnTick;
 
             IntPtr h = Handle;
@@ -178,6 +194,14 @@ namespace SoundWheel
             _rawWarned = false;
             _lastCursorSample = anchor;
             _lastCursorChange = DateTime.UtcNow;
+            _frameDirty = false;
+            _lastRawDelta = DateTime.MinValue;
+            _frameSum = 0;
+            _frameCount = 0;
+            _frameMax = 0;
+            _cacheDirty = true;
+            _composedDirty = true;
+            BuildFonts();
 
             UpdateHover();
 
@@ -229,6 +253,11 @@ namespace SoundWheel
             _shown = false;
             _closing = false;
             _timer.Stop();
+            if (MouseDebug && _frameCount > 0)
+            {
+                Log.Info(string.Format("渲染统计 帧={0} 平均={1:0.0}ms 最大={2:0.0}ms",
+                    _frameCount, _frameSum / _frameCount, _frameMax));
+            }
             if (_rawRegistered && _rawWindow != null)
             {
                 _rawRegistered = false;
@@ -238,6 +267,8 @@ namespace SoundWheel
             _capturing = false;
             _leftPending = false;
             _rightPending = false;
+            DisposeCaches();
+            DisposeFonts();
             Native.HideWindow(Handle);
         }
 
@@ -278,9 +309,14 @@ namespace SoundWheel
             if (!_closing)
             {
                 PollMouse(now);
-                if (FakeRaw && _relative && (now - _openedAt).TotalMilliseconds < 700) OnRawMouse(5, -7);
+                if (FakeRaw && _relative && (now - _openedAt).TotalMilliseconds < 5000) OnRawMouse(5, -7);
                 if (_capturing && _relative) SyncCapturedCursor();
                 UpdateHover();
+                if (_frameDirty)
+                {
+                    _frameDirty = false;
+                    Render();
+                }
 
                 if (_rightPending)
                 {
@@ -367,7 +403,8 @@ namespace SoundWheel
             if (ring == _hoverRing && slot == _hoverSlot) return;
             _hoverRing = ring;
             _hoverSlot = slot;
-            Render();
+            _frameDirty = true;
+            _composedDirty = true;
         }
 
         private Point CurrentPointer()
@@ -439,6 +476,8 @@ namespace SoundWheel
         // 回调里只累加位移，光标同步放到每个 tick 做，避免在钩子回调里再次触发鼠标事件
         private void OnHookMouse(int dx, int dy)
         {
+            // 原始输入是硬件计数，不受我们钉住光标的影响；只要它还在来，就不用钩子的光标差值
+            if ((DateTime.UtcNow - _lastRawDelta).TotalMilliseconds < 400) return;
             OnRawMouse(dx, dy);
         }
 
@@ -460,7 +499,7 @@ namespace SoundWheel
             int ty = (int)Math.Round(_vy);
             Native.SetCursorPos(tx, ty);
             _cursorSynced = new Point(tx, ty);
-            if (_hook != null) _hook.ResetBase();
+            if (_hook != null) _hook.NoteCursor(tx, ty);
         }
 
         private void OnHookLeft()
@@ -475,6 +514,7 @@ namespace SoundWheel
 
         private void OnRawMouseEvent(int dx, int dy)
         {
+            _lastRawDelta = DateTime.UtcNow;
             if (MouseDebug) Log.Info(string.Format("原始鼠标 dx={0} dy={1} rel={2}", dx, dy, _relative));
             if (dx == 0 && dy == 0) return;
             OnRawMouse(dx, dy);
@@ -490,6 +530,13 @@ namespace SoundWheel
             _vx += dx * k;
             _vy += dy * k;
             ClampVirtual();
+            _frameDirty = true;
+            // 收到位移后立刻重绘（8ms 内刚画过就交给定时器），指针更跟手
+            if (_shown && !_preview && (DateTime.UtcNow - _lastRenderAt).TotalMilliseconds >= 8)
+            {
+                UpdateHover();
+                Render();
+            }
         }
 
         // 相对模式下把虚拟指针限制在轮盘范围内，避免越走越远
@@ -600,29 +647,66 @@ namespace SoundWheel
             base.WndProc(ref m);
         }
 
+        // 分层缓存：静态底图（底盘 + 扇区）、标签层、合成层（底图 + 悬停高亮 + 标签 + 中心）
+        // 指针每帧移动时只做一次合成层 blit + 画指针，不再重画二十来个抗锯齿扇区
+        private void EnsureCanvas(int size)
+        {
+            if (_canvas != null && _canvas.Width == size) return;
+            if (_canvas != null) _canvas.Dispose();
+            _canvas = new Bitmap(size, size, PixelFormat.Format32bppPArgb);
+        }
+
+        private static void SetupQuality(Graphics g)
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            g.CompositingQuality = CompositingQuality.Default;
+            g.TextRenderingHint = TextRenderingHint.AntiAlias;
+        }
+
         private void Render()
         {
-            if (!_shown) return;
-            int size = _geo.Size;
-            if (_canvas == null || _canvas.Width != size)
+            // 鼠标输入可能比定时器更快，这里做重入保护 + 限速直绘，减少指针延迟
+            if (_rendering) return;
+            _rendering = true;
+            try
             {
-                if (_canvas != null) _canvas.Dispose();
-                _canvas = new Bitmap(size, size, PixelFormat.Format32bppPArgb);
+                RenderCore();
             }
+            finally
+            {
+                _rendering = false;
+                _lastRenderAt = DateTime.UtcNow;
+            }
+        }
+
+        private void RenderCore()
+        {
+            if (!_shown) return;
+            _frameWatch.Reset();
+            _frameWatch.Start();
+
+            int size = _geo.Size;
+            EnsureCanvas(size);
 
             float vis = 1f;
             if (_config.Animations)
                 vis = _animDir >= 0 ? EaseOutCubic(_anim) : _anim;
             _alpha = vis;
 
+            if (_cacheDirty)
+            {
+                _cacheDirty = false;
+                BuildCaches(size);
+                _composedDirty = true;
+            }
+            if (_composedDirty) RebuildComposed();
+
             using (Graphics g = Graphics.FromImage(_canvas))
             {
                 g.Clear(Color.Transparent);
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-                g.CompositingQuality = CompositingQuality.HighQuality;
+                SetupQuality(g);
                 g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                g.TextRenderingHint = TextRenderingHint.AntiAlias;
 
                 float s = 0.92f + 0.08f * vis;
                 float cx = size / 2f;
@@ -630,10 +714,153 @@ namespace SoundWheel
                 g.ScaleTransform(s, s);
                 g.TranslateTransform(-cx, -cx);
 
-                DrawScene(g);
+                if (vis >= 0.999f)
+                {
+                    g.InterpolationMode = InterpolationMode.NearestNeighbor;
+                    g.DrawImageUnscaled(_composed, 0, 0);
+                }
+                else
+                {
+                    // 动画期间整体淡化：用 ColorMatrix 调 alpha 一次画完
+                    ColorMatrix matrix = new ColorMatrix();
+                    matrix.Matrix33 = vis;
+                    using (ImageAttributes attrs = new ImageAttributes())
+                    {
+                        attrs.SetColorMatrix(matrix);
+                        Rectangle dest = new Rectangle(0, 0, size, size);
+                        g.DrawImage(_composed, dest, 0, 0, size, size, GraphicsUnit.Pixel, attrs);
+                    }
+                }
+
+                DrawPointer(g, _config.AccentColor);
             }
 
             Present(_canvas);
+
+            _frameWatch.Stop();
+            double frameMs = _frameWatch.Elapsed.TotalMilliseconds;
+            _frameSum += frameMs;
+            _frameCount++;
+            if (frameMs > _frameMax) _frameMax = frameMs;
+            if (MouseDebug && frameMs > 8.0) Log.Info(string.Format("渲染耗时 {0:0.0}ms", frameMs));
+        }
+
+        private void BuildCaches(int size)
+        {
+            if (_bgCache == null || _bgCache.Width != size)
+            {
+                DisposeCaches();
+                _bgCache = new Bitmap(size, size, PixelFormat.Format32bppPArgb);
+                _labelCache = new Bitmap(size, size, PixelFormat.Format32bppPArgb);
+                _composed = new Bitmap(size, size, PixelFormat.Format32bppPArgb);
+            }
+
+            float keep = _alpha;
+            _alpha = 1f;
+            try
+            {
+                using (Graphics g = Graphics.FromImage(_bgCache))
+                {
+                    SetupQuality(g);
+                    g.Clear(Color.Transparent);
+                    DrawBase(g);
+                    DrawRingBody(g, _inner, _geo.InnerIn, _geo.InnerOut, true);
+                    if (_geo.OuterCount > 0)
+                        DrawRingBody(g, _outer, _geo.OuterIn, _geo.OuterOut, false);
+                }
+                using (Graphics g = Graphics.FromImage(_labelCache))
+                {
+                    SetupQuality(g);
+                    g.Clear(Color.Transparent);
+                    DrawRingLabels(g, _inner, _geo.InnerIn, _geo.InnerOut, _innerFont);
+                    if (_geo.OuterCount > 0)
+                        DrawRingLabels(g, _outer, _geo.OuterIn, _geo.OuterOut, _outerFont);
+                }
+            }
+            finally
+            {
+                _alpha = keep;
+            }
+        }
+
+        private void RebuildComposed()
+        {
+            if (_composed == null) return;
+            float keep = _alpha;
+            _alpha = 1f;
+            try
+            {
+                using (Graphics g = Graphics.FromImage(_composed))
+                {
+                    SetupQuality(g);
+                    g.Clear(Color.Transparent);
+                    g.InterpolationMode = InterpolationMode.NearestNeighbor;
+                    g.DrawImageUnscaled(_bgCache, 0, 0);
+                    DrawHover(g);
+                    g.DrawImageUnscaled(_labelCache, 0, 0);
+                    DrawHub(g, _hubFont, _config.AccentColor);
+                }
+            }
+            finally
+            {
+                _alpha = keep;
+            }
+            _composedDirty = false;
+        }
+
+        private void DisposeCaches()
+        {
+            if (_bgCache != null) { _bgCache.Dispose(); _bgCache = null; }
+            if (_labelCache != null) { _labelCache.Dispose(); _labelCache = null; }
+            if (_composed != null) { _composed.Dispose(); _composed = null; }
+        }
+
+        private void DrawHover(Graphics g)
+        {
+            if (_hoverSlot < 0) return;
+            List<WheelItem> items = _hoverRing == 0 ? _inner : (_hoverRing == 1 ? _outer : null);
+            if (items == null || _hoverSlot >= items.Count) return;
+            int n = items.Count;
+            if (n <= 0) return;
+            bool inner = _hoverRing == 0;
+            float rIn = inner ? _geo.InnerIn : _geo.OuterIn;
+            float rOut = inner ? _geo.InnerOut : _geo.OuterOut;
+            float pad = inner ? 0.6f : 0.9f;
+            float span = 360f / n;
+            using (GraphicsPath path = SegmentPath(rIn, rOut, _hoverSlot * span + pad, (_hoverSlot + 1) * span - pad))
+            {
+                Color fill = items[_hoverSlot].Assigned ? _config.AccentColor : Color.FromArgb(255, 58, 66, 84);
+                using (SolidBrush brush = new SolidBrush(Color.FromArgb(A(246), fill)))
+                    g.FillPath(brush, path);
+            }
+        }
+
+        private void DrawRingBody(Graphics g, List<WheelItem> items, float rIn, float rOut, bool inner)
+        {
+            int n = items.Count;
+            if (n <= 0) return;
+            float span = 360f / n;
+            float pad = inner ? 0.6f : 0.9f;
+            Color baseFill = inner ? Color.FromArgb(255, 27, 31, 41) : Color.FromArgb(255, 22, 26, 34);
+            Color emptyFill = Color.FromArgb(255, 17, 20, 26);
+            for (int i = 0; i < n; i++)
+            {
+                using (GraphicsPath path = SegmentPath(rIn, rOut, i * span + pad, (i + 1) * span - pad))
+                {
+                    WheelItem item = items[i];
+                    Color fill = item.Assigned ? baseFill : emptyFill;
+                    int alpha = item.Assigned ? A(240) : A(140);
+                    using (SolidBrush brush = new SolidBrush(Color.FromArgb(alpha, fill)))
+                        g.FillPath(brush, path);
+                }
+            }
+        }
+
+        private void DrawRingLabels(Graphics g, List<WheelItem> items, float rIn, float rOut, Font font)
+        {
+            int n = items.Count;
+            for (int i = 0; i < n; i++)
+                DrawSlotText(g, items[i], i, n, rIn, rOut, font);
         }
 
         private static float EaseOutCubic(float t)
@@ -650,22 +877,6 @@ namespace SoundWheel
             if (v < 0) return 0;
             if (v > 255) return 255;
             return v;
-        }
-
-        private void DrawScene(Graphics g)
-        {
-            Color accent = _config.AccentColor;
-            using (Font innerFont = MakeFont(14.5f * _geo.Scale, false))
-            using (Font outerFont = MakeFont(12.5f * _geo.Scale, false))
-            using (Font hubFont = MakeFont(15f * _geo.Scale, true))
-            {
-                DrawBase(g);
-                DrawRing(g, _inner, _geo.InnerIn, _geo.InnerOut, 0, true, innerFont);
-                if (_geo.OuterCount > 0)
-                    DrawRing(g, _outer, _geo.OuterIn, _geo.OuterOut, 1, false, outerFont);
-                DrawHub(g, hubFont, accent);
-                DrawPointer(g, accent);
-            }
         }
 
         // 相对跟踪时（游戏隐藏/锁定光标，或接管鼠标后触摸板式操作），用小圆点表示当前选择位置
@@ -689,6 +900,23 @@ namespace SoundWheel
             }
         }
 
+
+        private void BuildFonts()
+        {
+            DisposeFonts();
+            float scale = _geo.Scale;
+            _innerFont = MakeFont(13f * scale, false);
+            _outerFont = MakeFont(13f * scale, false);
+            _hubFont = MakeFont(15f * scale, true);
+        }
+
+        private void DisposeFonts()
+        {
+            if (_innerFont != null) { _innerFont.Dispose(); _innerFont = null; }
+            if (_outerFont != null) { _outerFont.Dispose(); _outerFont = null; }
+            if (_hubFont != null) { _hubFont.Dispose(); _hubFont = null; }
+        }
+
         private static Font MakeFont(float pixelSize, bool bold)
         {
             if (pixelSize < 6f) pixelSize = 6f;
@@ -707,47 +935,7 @@ namespace SoundWheel
             }
         }
 
-        private void DrawRing(Graphics g, List<WheelItem> items, float rIn, float rOut, int ringIndex, bool inner, Font font)
-        {
-            int n = items.Count;
-            if (n <= 0) return;
-            float span = 360f / n;
-            float pad = inner ? 0.6f : 0.9f;
-            int hovered = _hoverRing == ringIndex ? _hoverSlot : -1;
-            Color accent = _config.AccentColor;
-            Color baseFill = inner ? Color.FromArgb(255, 27, 31, 41) : Color.FromArgb(255, 22, 26, 34);
-            Color emptyFill = Color.FromArgb(255, 17, 20, 26);
-
-            for (int i = 0; i < n; i++)
-            {
-                if (i == hovered) continue;
-                using (GraphicsPath path = SegmentPath(rIn, rOut, i * span + pad, (i + 1) * span - pad))
-                {
-                    WheelItem item = items[i];
-                    Color fill = item.Assigned ? baseFill : emptyFill;
-                    int alpha = item.Assigned ? A(240) : A(140);
-                    using (SolidBrush brush = new SolidBrush(Color.FromArgb(alpha, fill)))
-                        g.FillPath(brush, path);
-                }
-            }
-
-            // 高亮：整块填强调色，去掉渐变、发光和外描边
-            if (hovered >= 0 && hovered < n)
-            {
-                using (GraphicsPath path = SegmentPath(rIn, rOut, hovered * span + pad, (hovered + 1) * span - pad))
-                {
-                    Color fill = items[hovered].Assigned ? accent : Color.FromArgb(255, 58, 66, 84);
-                    using (SolidBrush brush = new SolidBrush(Color.FromArgb(A(246), fill)))
-                        g.FillPath(brush, path);
-                }
-            }
-
-            for (int i = 0; i < n; i++)
-                DrawSlotText(g, items[i], i, n, rIn, rOut, i == hovered, font);
-        }
-
-        // 每个扇区只放一行标题（放不下就用省略号），比原来两行更干净
-        private void DrawSlotText(Graphics g, WheelItem item, int i, int n, float rIn, float rOut, bool hovered, Font font)
+        private void DrawSlotText(Graphics g, WheelItem item, int i, int n, float rIn, float rOut, Font font)
         {
             float mid = (rIn + rOut) * 0.5f;
             double angle = (i + 0.5) * (360.0 / n);
@@ -759,25 +947,23 @@ namespace SoundWheel
 
             string text = item.Assigned && !string.IsNullOrEmpty(item.Title) ? item.Title : "空闲";
             Color color = item.Assigned
-                ? (hovered ? Color.FromArgb(255, 255, 255, 255) : Color.FromArgb(A(232), 236, 241, 250))
+                ? Color.FromArgb(A(232), 236, 241, 250)
                 : Color.FromArgb(A(95), 200, 208, 224);
 
-            List<string> lines = WrapText(g, text, font, maxWidth, 1);
-            if (lines.Count == 0) return;
-
             float lineHeight = font.GetHeight(g) * 1.45f;
-            StringFormat format = new StringFormat();
-            format.Alignment = StringAlignment.Center;
-            format.LineAlignment = StringAlignment.Center;
-            format.FormatFlags = StringFormatFlags.NoWrap;
-            format.Trimming = StringTrimming.EllipsisCharacter;
-
-            using (SolidBrush brush = new SolidBrush(color))
+            using (StringFormat format = new StringFormat())
             {
-                RectangleF rect = new RectangleF(center.X - maxWidth / 2f, center.Y - lineHeight / 2f, maxWidth, lineHeight);
-                g.DrawString(lines[0], font, brush, rect, format);
+                format.Alignment = StringAlignment.Center;
+                format.LineAlignment = StringAlignment.Center;
+                format.FormatFlags = StringFormatFlags.NoWrap;
+                format.Trimming = StringTrimming.EllipsisCharacter;
+
+                using (SolidBrush brush = new SolidBrush(color))
+                {
+                    RectangleF rect = new RectangleF(center.X - maxWidth / 2f, center.Y - lineHeight / 2f, maxWidth, lineHeight);
+                    g.DrawString(text, font, brush, rect, format);
+                }
             }
-            format.Dispose();
         }
 
         private static List<string> WrapText(Graphics g, string text, Font font, float maxWidth, int maxLines)
@@ -851,22 +1037,20 @@ namespace SoundWheel
                 : Color.FromArgb(A(170), 214, 221, 236);
 
             float textWidth = r * 2f * 0.80f;
-            List<string> lines = WrapText(g, title, titleFont, textWidth, 1);
-            if (lines.Count == 0) return;
-
             float lineHeight = titleFont.GetHeight(g) * 1.5f;
-            StringFormat format = new StringFormat();
-            format.Alignment = StringAlignment.Center;
-            format.LineAlignment = StringAlignment.Center;
-            format.FormatFlags = StringFormatFlags.NoWrap;
-            format.Trimming = StringTrimming.EllipsisCharacter;
-
-            using (SolidBrush brush = new SolidBrush(color))
+            using (StringFormat format = new StringFormat())
             {
-                RectangleF line = new RectangleF(cx - textWidth / 2f, cy - lineHeight / 2f, textWidth, lineHeight);
-                g.DrawString(lines[0], titleFont, brush, line, format);
+                format.Alignment = StringAlignment.Center;
+                format.LineAlignment = StringAlignment.Center;
+                format.FormatFlags = StringFormatFlags.NoWrap;
+                format.Trimming = StringTrimming.EllipsisCharacter;
+
+                using (SolidBrush brush = new SolidBrush(color))
+                {
+                    RectangleF line = new RectangleF(cx - textWidth / 2f, cy - lineHeight / 2f, textWidth, lineHeight);
+                    g.DrawString(title, titleFont, brush, line, format);
+                }
             }
-            format.Dispose();
         }
 
         private PointF PointOnCircle(float radius, double angleDegrees)
@@ -931,6 +1115,8 @@ namespace SoundWheel
                 _timer.Stop();
                 _timer.Dispose();
                 if (_canvas != null) { _canvas.Dispose(); _canvas = null; }
+                DisposeCaches();
+                DisposeFonts();
                 if (_rawWindow != null)
                 {
                     _rawWindow.Unregister();

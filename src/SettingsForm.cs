@@ -606,7 +606,7 @@ namespace SoundWheel
             Label about = new Label();
             about.Location = new Point(24, 24);
             about.Size = new Size(920, 500);
-            about.Text = "SoundWheel 1.2" + Environment.NewLine + Environment.NewLine +
+            about.Text = "SoundWheel 1.2.1" + Environment.NewLine + Environment.NewLine +
                 "Soundpad 音效轮盘：按住热键在鼠标位置弹出轮盘，移动鼠标选择音效，松开即播放。" +
                 Environment.NewLine + Environment.NewLine +
                 "本程序通过 Soundpad 官方远程控制接口（命名管道）工作，不修改 Soundpad 安装文件。" +

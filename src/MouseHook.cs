@@ -54,10 +54,12 @@ namespace SoundWheel
             return true;
         }
 
-        // 我们自己用 SetCursorPos 驱动光标后调用，让下一次真实移动不产生跳变
-        public void ResetBase()
+        // 我们自己用 SetCursorPos 把光标钉到虚拟指针后调用：把基准点设成我们刚设的位置，
+        // 这样下一次真实移动算出来的差值仍然是真实位移，不会丢掉一条事件（旧实现直接清空基准会丢位移，手感发粘）
+        public void NoteCursor(int x, int y)
         {
-            _hasLast = false;
+            _last = new Point(x, y);
+            _hasLast = true;
         }
 
         public void Uninstall()
