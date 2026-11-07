@@ -75,7 +75,18 @@ namespace SoundWheel
         private bool _toggleFallback;
         private short _lastRaw = -1;
         internal static bool KeyDebug;
+        internal static bool MouseDebug;
+        internal static bool FakeRaw;
         private bool _escDown;
+        private bool _relative;
+        private float _vx;
+        private float _vy;
+        private float _rawAccum;
+        private bool _rawWarned;
+        private bool _rawRegistered;
+        private RawMouseWindow _rawWindow;
+        private Point _lastCursorSample;
+        private DateTime _lastCursorChange;
 
         public event Action<WheelItem> PlayRequested;
 
@@ -153,6 +164,13 @@ namespace SoundWheel
             _animSpeed = 1000f / 140f;
             _alpha = _anim;
             _lastTick = DateTime.UtcNow;
+            _relative = _config.MouseMode == 2;
+            _vx = anchor.X;
+            _vy = anchor.Y;
+            _rawAccum = 0f;
+            _rawWarned = false;
+            _lastCursorSample = anchor;
+            _lastCursorChange = DateTime.UtcNow;
 
             UpdateHover();
 
@@ -160,6 +178,17 @@ namespace SoundWheel
                 anchor.X, anchor.Y, _bounds.X, _bounds.Y, _bounds.Width, dpiScale, _config.InnerCount, _config.OuterCount));
 
             Native.ShowNoActivate(Handle);
+            if (_rawWindow == null)
+            {
+                _rawWindow = new RawMouseWindow();
+                _rawWindow.Moved += OnRawMouseEvent;
+                _rawWindow.EnsureHandle();
+                Native.ShowNoActivate(_rawWindow.Handle);
+            }
+            _rawRegistered = _rawWindow.Register();
+            Log.Info("鼠标跟踪 设置=" + MouseModeText(_config.MouseMode) + " 实际=" + (_relative ? "相对" : "绝对")
+                + " 原始输入=" + _rawRegistered + " 窗口=" + _rawWindow.Handle
+                + " 灵敏度=" + _config.MouseSensitivity.ToString("0.0"));
             _timer.Start();
             Render();
         }
@@ -170,6 +199,11 @@ namespace SoundWheel
             _shown = false;
             _closing = false;
             _timer.Stop();
+            if (_rawRegistered && _rawWindow != null)
+            {
+                _rawRegistered = false;
+                _rawWindow.Unregister();
+            }
             Native.HideWindow(Handle);
         }
 
@@ -209,6 +243,8 @@ namespace SoundWheel
 
             if (!_closing)
             {
+                PollMouse(now);
+                if (FakeRaw && _relative && (now - _openedAt).TotalMilliseconds < 700) OnRawMouse(5, -7);
                 UpdateHover();
 
                 if (_preview)
@@ -267,7 +303,7 @@ namespace SoundWheel
 
         private void UpdateHover()
         {
-            Point cursor = Cursor.Position;
+            Point cursor = CurrentPointer();
             if (!_armed)
             {
                 float mdx = cursor.X - _openCursor.X;
@@ -283,6 +319,96 @@ namespace SoundWheel
             _hoverRing = ring;
             _hoverSlot = slot;
             Render();
+        }
+
+        private Point CurrentPointer()
+        {
+            if (_relative) return new Point((int)Math.Round(_vx), (int)Math.Round(_vy));
+            return Cursor.Position;
+        }
+
+        private static string MouseModeText(int mode)
+        {
+            if (mode == 1) return "绝对";
+            if (mode == 2) return "相对";
+            return "自动";
+        }
+
+        // 每个 tick 采样系统光标，并在"自动"模式下判断是否需要改用相对位移跟踪
+        private void PollMouse(DateTime now)
+        {
+            Point p = Cursor.Position;
+            if (p.X != _lastCursorSample.X || p.Y != _lastCursorSample.Y)
+            {
+                _lastCursorSample = p;
+                _lastCursorChange = now;
+            }
+            if (!_preview && _openedAt != DateTime.MinValue && !_rawWarned && (now - _openedAt).TotalMilliseconds > 1600
+                && _relative && _rawRegistered && _rawAccum <= 0f)
+            {
+                _rawWarned = true;
+                Log.Info("警告：1.6 秒内没有收到鼠标原始输入，相对位移可能不可用（可在设置『游戏与鼠标』页检查跟踪方式）");
+            }
+            if (_relative || _preview || _config.MouseMode != 0) return;
+            if ((now - _openedAt).TotalMilliseconds < 150) return;
+
+            double stall = (now - _lastCursorChange).TotalMilliseconds;
+            if (Native.CursorHidden() && stall > 120)
+            {
+                SwitchToRelative("光标已被程序隐藏", p);
+                return;
+            }
+            if (Native.CursorClipped() && stall > 120)
+            {
+                SwitchToRelative("光标被限制在小范围内（游戏锁定）", p);
+                return;
+            }
+            if (_rawAccum > 30 && stall > 180)
+            {
+                SwitchToRelative("收到鼠标原始位移但系统光标未移动", p);
+            }
+        }
+
+        private void SwitchToRelative(string reason, Point from)
+        {
+            if (_relative) return;
+            _relative = true;
+            _vx = from.X;
+            _vy = from.Y;
+            Log.Info("鼠标改为相对跟踪：" + reason + "（起点 " + from.X + "," + from.Y + "）");
+        }
+
+        private void OnRawMouseEvent(int dx, int dy)
+        {
+            if (MouseDebug) Log.Info(string.Format("原始鼠标 dx={0} dy={1} rel={2}", dx, dy, _relative));
+            if (dx == 0 && dy == 0) return;
+            OnRawMouse(dx, dy);
+        }
+
+        private void OnRawMouse(int dx, int dy)
+        {
+            _rawAccum += Math.Abs(dx) + Math.Abs(dy);
+            if (!_relative) return;
+
+            float k = (float)_config.MouseSensitivity;
+            if (k < 0.05f) k = 1f;
+            _vx += dx * k;
+            _vy += dy * k;
+            ClampVirtual();
+        }
+
+        // 相对模式下把虚拟指针限制在轮盘范围内，避免越走越远
+        private void ClampVirtual()
+        {
+            float maxR = (_geo.OuterCount > 0 ? _geo.OuterOut : _geo.InnerOut) - 2f * _geo.Scale;
+            float cx = _bounds.X + _geo.Center;
+            float cy = _bounds.Y + _geo.Center;
+            float dx = _vx - cx;
+            float dy = _vy - cy;
+            float d = (float)Math.Sqrt(dx * dx + dy * dy);
+            if (d <= maxR || d <= 0.01f) return;
+            _vx = cx + dx * maxR / d;
+            _vy = cy + dy * maxR / d;
         }
 
         private void HitTest(Point local, out int ring, out int slot)
@@ -314,9 +440,9 @@ namespace SoundWheel
         private void Commit()
         {
             WheelItem item = HoveredItem();
-            Point cursor = Cursor.Position;
-            Log.Info(string.Format("提交 cursor={0},{1} bounds={2},{3},{4} ring={5} slot={6} item={7}",
-                cursor.X, cursor.Y, _bounds.X, _bounds.Y, _bounds.Width, _hoverRing, _hoverSlot,
+            Point cursor = CurrentPointer();
+            Log.Info(string.Format("提交 cursor={0},{1} rel={2} bounds={3},{4},{5} ring={6} slot={7} item={8}",
+                cursor.X, cursor.Y, _relative, _bounds.X, _bounds.Y, _bounds.Width, _hoverRing, _hoverSlot,
                 item == null ? "null" : item.Index + " " + item.Title));
             bool play = item != null && item.Assigned;
             CloseWheel();
@@ -362,7 +488,7 @@ namespace SoundWheel
             }
             if (m.Msg == 0x0202)
             {
-                Point cursor = Cursor.Position;
+                Point cursor = CurrentPointer();
                 int ring;
                 int slot;
                 HitTest(new Point(cursor.X - _bounds.X, cursor.Y - _bounds.Y), out ring, out slot);
@@ -446,6 +572,35 @@ namespace SoundWheel
                 if (_geo.OuterCount > 0)
                     DrawRing(g, _outer, _geo.OuterIn, _geo.OuterOut, 1, false, outerFont);
                 DrawHub(g, hubFont, hintFont, accent);
+                DrawPointer(g, accent);
+            }
+        }
+
+        // 相对模式下系统光标可能被游戏锁住，这里画一个虚拟指针表示当前选择位置
+        private void DrawPointer(Graphics g, Color accent)
+        {
+            if (!_relative) return;
+            float x = _vx - _bounds.X;
+            float y = _vy - _bounds.Y;
+            float r = 5f * _geo.Scale;
+
+            using (GraphicsPath halo = new GraphicsPath())
+            {
+                halo.AddEllipse(x - r * 3f, y - r * 3f, r * 6f, r * 6f);
+                using (PathGradientBrush brush = new PathGradientBrush(halo))
+                {
+                    brush.CenterColor = Color.FromArgb(A(110), accent);
+                    brush.SurroundColors = new Color[] { Color.FromArgb(0, accent) };
+                    g.FillPath(brush, halo);
+                }
+            }
+            using (SolidBrush fill = new SolidBrush(Color.FromArgb(A(255), 250, 252, 255)))
+            {
+                g.FillEllipse(fill, x - r, y - r, r * 2f, r * 2f);
+            }
+            using (Pen border = new Pen(Color.FromArgb(A(220), accent), Math.Max(1.4f, 1.2f * _geo.Scale)))
+            {
+                g.DrawEllipse(border, x - r, y - r, r * 2f, r * 2f);
             }
         }
 
@@ -779,6 +934,12 @@ namespace SoundWheel
                 _timer.Stop();
                 _timer.Dispose();
                 if (_canvas != null) { _canvas.Dispose(); _canvas = null; }
+                if (_rawWindow != null)
+                {
+                    _rawWindow.Unregister();
+                    _rawWindow.Dispose();
+                    _rawWindow = null;
+                }
             }
             base.Dispose(disposing);
         }

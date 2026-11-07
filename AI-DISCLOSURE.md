@@ -18,12 +18,12 @@
 
 ### AI 直接产出的内容
 
-- `src/*.cs` —— 全部 13 个源文件（约 5,700 行）
+- `src/*.cs` —— 全部 14 个源文件（约 6,000 行）
 - `tools/*.cs` —— MockSoundpad 假服务器、图标生成器与开发期测试工具
 - `build.cmd` / `build.ps1` —— 构建脚本
 - `assets/app.ico` —— 由 `tools/MakeIcon.cs` 程序化绘制（GDI+ 画轮盘 + 手写 ICO 编码器），非第三方素材
 - `README.md` / `README.en.md` / 本文档等全部文字材料
-- `assets/wheel.png` / `assets/settings.png` —— 实机运行截图
+- `assets/wheel.png` / `assets/settings.png` / `assets/settings-mouse.png` —— 实机运行截图
 
 ### 人类的参与
 
@@ -37,6 +37,16 @@
 - **没有复制任何开源项目的代码。** 播放能力仅依赖 Soundpad 官方公开的 Remote Control API 文档（命名管道 `\\.\pipe\sp_remote_control` + 文本命令），客户端为从零实现。
 - 图标、截图、Mock 假服务器、文档均为本项目原创内容。
 - 依赖：仅 .NET Framework 4.x 自带类库（System.Drawing / System.Windows.Forms / System.IO.Pipes），无 NuGet 包、无外部二进制。
+
+## v1.1.0 增补（FPS / 锁定鼠标兼容）
+
+- 新增 `src/RawMouse.cs`（隐藏窗口 + `RegisterRawInputDevices` / `WM_INPUT`）、`mouseMode` / `mouseSensitivity` 配置项、设置页「游戏与鼠标」、`--debug-mouse` 参数
+- 验证方式（实机，Windows 11 150% DPI）：
+  - 用 `PostMessage(hwnd, WM_INPUT, 0, 0)` 合成消息，确认隐藏窗口的 `WndProc` 确实收到并解析原始鼠标数据
+  - 用内部开关（环境变量 `SOUNDWHEEL_FAKE_RAW=1`，仅用于自动化验证）注入合成位移，截图确认虚拟指针移动到外圈扇区、高亮、中心显示音效名
+  - 用 `PostMessage(hwnd, WM_LBUTTONUP, ...)` 触发提交，日志为 `提交 cursor=1450,562 rel=True ... ring=1 slot=1 item=10 倒计时` → `预览选择: 倒计时`
+  - 设置页「游戏与鼠标」在 150% DPI 下截图确认无裁切
+- 未验证：真实游戏里的原始输入行为（测试机无法注入真实设备事件，且反作弊环境不可控）、光标被 `ClipCursor` 锁定时的自动切换（代码路径已实现并截图验证渲染，但真实锁定场景未复现）
 
 ## 验证情况（截至 v1.0.0）
 

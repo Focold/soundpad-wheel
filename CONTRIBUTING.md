@@ -42,7 +42,25 @@ build.cmd
 3. 打开设置 → 轮盘布局 → 刷新音效列表（应看到 20 条假音效）
 4. `%TEMP%\mock.log` 里应出现 `PLAY n`
 
-方便调试的参数：`--preview [秒]`、`--settings`、`--data <目录>`、`--debug-keys`。
+方便调试的参数：`--preview [秒]`、`--settings`、`--data <目录>`、`--debug-keys`、`--debug-mouse`。
+
+两个只在开发期使用的环境变量（**不要写进用户文档**）：
+
+- `SOUNDWHEEL_DEBUG_MOUSE=1` —— 等价于 `--debug-mouse`
+- `SOUNDWHEEL_FAKE_RAW=1` —— 打开轮盘后 700 ms 内每帧注入合成位移 `OnRawMouse(5, -7)`，
+  用于在没有真实原始输入事件的环境里验证相对位移 → 命中 → 高亮 → 提交的整条链路
+
+验证相对模式的一条捷径：以 `SOUNDWHEEL_FAKE_RAW=1` 启动 → 用 `FindWindow(null, "SoundWheelRawMouse")` 找到原始输入窗口 →
+`PostMessage(hwnd, WM_INPUT, 0, 0)` 确认消息链路 → 对轮盘窗口 `PostMessage(hwnd, WM_LBUTTONUP, 0, 0)` 确认提交（日志里应有 `rel=True`）。
+
+## 开发工具（`tools/`）
+
+- `MockSoundpad.cs` —— 假 Soundpad 命名管道服务器，打印收到的命令（自测必用）
+- `MouseLock.cs` —— 把光标锁在屏幕中心并注入相对位移，用来手工复现 FPS / 指针锁定场景
+- `MakeIcon.cs` —— 用 GDI+ 程序化生成 `assets/app.ico`（多尺寸 DIB 条目）
+
+注意：原始输入的对照探针（旧 `RawProbe`）已被删除——它会触发部分杀毒软件的启发式拦截，
+现在改用产品内置的诊断（`--debug-mouse` 与 `SOUNDWHEEL_FAKE_RAW`）。
 
 ## 提交 PR
 

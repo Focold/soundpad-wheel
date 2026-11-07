@@ -39,6 +39,8 @@ namespace SoundWheel
         public string Accent = "#5B8CFF";
         public int InnerCount = 8;
         public int OuterCount = 12;
+        public int MouseMode = 0;              // 0=自动 1=绝对坐标 2=相对位移
+        public double MouseSensitivity = 1.0;  // 相对位移灵敏度
         public List<SlotConfig> Inner = new List<SlotConfig>();
         public List<SlotConfig> Outer = new List<SlotConfig>();
 
@@ -57,6 +59,10 @@ namespace SoundWheel
             if (InnerCount > 12) InnerCount = 12;
             if (OuterCount < 0) OuterCount = 0;
             if (OuterCount > 16) OuterCount = 16;
+            if (MouseMode < 0) MouseMode = 0;
+            if (MouseMode > 2) MouseMode = 2;
+            if (MouseSensitivity < 0.2) MouseSensitivity = 0.2;
+            if (MouseSensitivity > 4.0) MouseSensitivity = 4.0;
             while (Inner.Count < 12) Inner.Add(new SlotConfig());
             while (Outer.Count < 16) Outer.Add(new SlotConfig());
             if (Accent == null) Accent = "#5B8CFF";
@@ -85,6 +91,8 @@ namespace SoundWheel
                 cfg.Accent = Json.Str(root, "accent", "#5B8CFF");
                 cfg.InnerCount = Json.Int(root, "innerCount", 8);
                 cfg.OuterCount = Json.Int(root, "outerCount", 12);
+                cfg.MouseMode = Json.Int(root, "mouseMode", 0);
+                cfg.MouseSensitivity = Json.Dbl(root, "mouseSensitivity", 1.0);
 
                 ReadSlots(cfg.Inner, Json.GetArr(root, "inner"));
                 ReadSlots(cfg.Outer, Json.GetArr(root, "outer"));
@@ -125,6 +133,8 @@ namespace SoundWheel
             root["accent"] = Accent;
             root["innerCount"] = InnerCount;
             root["outerCount"] = OuterCount;
+            root["mouseMode"] = MouseMode;
+            root["mouseSensitivity"] = Math.Round(MouseSensitivity, 2);
             root["inner"] = SlotsToJson(Inner);
             root["outer"] = SlotsToJson(Outer);
 

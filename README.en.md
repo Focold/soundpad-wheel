@@ -25,6 +25,7 @@ SoundWheel is a standalone single-file `.exe` (no runtime install). It drives So
 - **Two rings** — inner 1–12 slots, outer 0–16 slots, assigned independently
 - **Two modes** — hold-to-play (release = play) or click-to-play
 - **Cancel with right click / Esc**
+- **FPS / first-person friendly** — when a game hides the cursor or clips it to the screen centre, the wheel switches to **Raw Input relative movement** and still works (see [Using it in FPS games](#using-it-in-fps--first-person-games))
 - **Hover feedback** — highlighted sector, glow, sound name in the centre hub
 - **Playback target** — microphone only / speakers only / both
 - **Tray resident** — open wheel, settings, refresh list, open data folder, quit
@@ -56,8 +57,36 @@ Soundpad's remote control is enabled by default; no option has to be ticked.
 
 ![Settings](assets/settings.png)
 
-> The UI is currently Chinese-only. The four tabs are: General · Wheel layout · Sound library · About.
+> The UI is currently Chinese-only. The five tabs are: General · Wheel layout · Sound library · Game & mouse · About.
 > Bottom bar: **Preview wheel** · **Save** · **Cancel**.
+
+---
+
+## Using it in FPS / first-person games
+
+Many first-person games **hide the system cursor**, **lock the pointer to the middle of the screen** (`ClipCursor`)
+and rotate the camera from raw input. A wheel that simply reads the cursor position would sit frozen in the centre.
+
+SoundWheel creates a second, 1×1 hidden window that registers for `WM_INPUT` and accumulates the raw mouse deltas
+into a virtual pointer.
+
+- **Tracking mode** (Settings → **游戏与鼠标** / Game & mouse)
+  - **Auto** (default) — within 120–180 ms of opening it checks whether the cursor is hidden, clipped to a tiny
+    rectangle, or whether raw movement arrives, and switches to relative mode when the game is in control
+  - **Absolute** — cursor position only (ordinary desktop apps)
+  - **Relative** — raw input only (FPS / pointer-locked games)
+- **Sensitivity** 0.2–4.0 — the virtual pointer travels further per mouse count
+- **Self-check** — press **检测鼠标状态** while the wheel is open in the game to see whether the cursor is hidden or clipped
+
+![Game & mouse settings](assets/settings-mouse.png)
+
+Trade-offs:
+
+1. In relative mode the **in-game camera still turns** — the app only listens to raw input, it cannot block the
+   game. Prefer the **hold mode** (hold hotkey → flick → release) instead of left-clicking, so you never fire by accident.
+2. Some games / anti-cheat stacks block raw input completely; then the pointer may not move at all. Try windowed or
+   borderless mode, click-to-play, or absolute mode.
+3. If no raw input event arrives within 1.6 s, the log records a warning to make this easy to diagnose.
 
 ---
 
@@ -72,6 +101,10 @@ Soundpad's remote control is enabled by default; no option has to be ticked.
 - **DPI** — Per-Monitor V2 aware; all geometry scaled by the monitor DPI (100 %/150 %/200 %).
 - **Hotkey** — `RegisterHotKey` + `MOD_NOREPEAT`; "is it still held?" is polled with `GetAsyncKeyState`
   (15 ms) with a 120 ms grace period and a 6 px dead zone, so the wheel never plays something by accident.
+- **Raw input** — a separate hidden window registers `RegisterRawInputDevices` (`RIDEV_INPUTSINK`) and turns `WM_INPUT`
+  `lLastX/lLastY` into the virtual pointer. That window must **not** carry `WS_EX_NOACTIVATE` — with that style it
+  receives no `WM_INPUT` at all (measured on Windows 11). The wheel itself stays `NOACTIVATE` so focus is never stolen.
+  The virtual pointer is clamped to the outermost ring radius so it can always hit a sector.
 - **Drift-proof slots** — each slot stores `title` + `index`; on play the title is resolved against the live
   sound list and only falls back to the stored index.
 
@@ -96,7 +129,7 @@ If `%APPDATA%` is not writable the app falls back to `%LOCALAPPDATA%\SoundWheel`
 ## Command line
 
 ```
-SoundWheel.exe [--data <dir>] [--preview [seconds]] [--settings] [--debug-keys]
+SoundWheel.exe [--data <dir>] [--preview [seconds]] [--settings] [--debug-keys] [--debug-mouse]
 ```
 
 | Option | Meaning |
@@ -105,6 +138,7 @@ SoundWheel.exe [--data <dir>] [--preview [seconds]] [--settings] [--debug-keys]
 | `--settings` | Open the settings window directly |
 | `--data <dir>` | Data folder (takes precedence over `SOUNDWHEEL_DATA`) |
 | `--debug-keys` | Log raw key states (diagnose hold/release problems) |
+| `--debug-mouse` | Log every raw mouse delta and tracking-mode switch (diagnose a frozen pointer in games) |
 
 Only one instance may run at a time.
 
@@ -149,6 +183,9 @@ A ready-made example configuration is included in `examples\testdata`.
 - **Nothing audible** — is Soundpad running? Refresh the sound list; check `soundwheel.log`;
   check the "send to microphone" option and Soundpad's own device settings.
 - **Wrong sound plays** — the order changed inside Soundpad; refresh the list (matching is title-first).
+- **Wheel opens in a game but the pointer will not move** — Settings → **Game & mouse** → **检测鼠标状态** to see
+  whether the cursor is hidden or clipped; switch tracking to **Relative**; try windowed/borderless mode; run with
+  `--debug-mouse` and check the log for the "no raw input within 1.6 s" warning.
 
 ---
 
@@ -156,6 +193,10 @@ A ready-made example configuration is included in `examples\testdata`.
 
 - Only the **All sounds** category index is used (that is what the Remote Control API exposes)
 - Max 12 inner + 16 outer slots, one configuration at a time
+- Relative mode only listens to raw input — it cannot stop the in-game camera from turning; if anti-cheat blocks
+  raw input entirely the pointer cannot be tracked
+- The wheel does not capture the mouse itself; the pointer is derived from polling/raw input, so a badly stuttering
+  game may lag it by a frame or two
 - Playback/stop only — it never edits audio or Soundpad's own data
 - UI is Chinese-only; tested on Windows 11 at 150 % DPI
 

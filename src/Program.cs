@@ -22,12 +22,16 @@ namespace SoundWheel
             };
 
             bool debugKeys = false;
+            bool debugMouse = false;
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "--data" && i + 1 < args.Length) { AppPaths.Override = args[i + 1]; i++; }
                 else if (args[i] == "--debug-keys") debugKeys = true;
+                else if (args[i] == "--debug-mouse") debugMouse = true;
             }
             WheelWindow.KeyDebug = debugKeys || Environment.GetEnvironmentVariable("SOUNDWHEEL_DEBUG_KEYS") == "1";
+            WheelWindow.MouseDebug = debugMouse || Environment.GetEnvironmentVariable("SOUNDWHEEL_DEBUG_MOUSE") == "1";
+            WheelWindow.FakeRaw = Environment.GetEnvironmentVariable("SOUNDWHEEL_FAKE_RAW") == "1";
 
             Log.FilePath = AppPaths.LogFile;
             Log.Info("启动 " + string.Join(" ", args));

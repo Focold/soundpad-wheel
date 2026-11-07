@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![AI Generated](https://img.shields.io/badge/content-AI--generated-8A2BE2.svg)](AI-DISCLOSURE.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey.svg)](#系统要求)
-[![Version](https://img.shields.io/badge/version-1.0.0-success.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.1.0-success.svg)](CHANGELOG.md)
 [![Build](https://github.com/Focold/soundpad-wheel/actions/workflows/build.yml/badge.svg)](https://github.com/Focold/soundpad-wheel/actions/workflows/build.yml)
 
 > [!IMPORTANT]
@@ -29,6 +29,7 @@ SoundWheel 是一个独立的小程序（单文件 exe，无需安装运行时�
   - 按住模式：按住热键 → 移动鼠标选中 → 松开即播放
   - 点按模式：按一下打开 → 左键点击扇区播放 → 自动关闭
 - **右键 / Esc 取消**，取消不会播放
+- **兼容 FPS / 第一人称游戏**：游戏隐藏光标或把鼠标锁在屏幕中心（ClipCursor）时，自动改用 **Raw Input 相对位移** 跟踪指针，轮盘照样能甩能选（见 [在 FPS / 第一人称游戏里使用](#在-fps--第一人称游戏里使用)）
 - **悬停反馈**：高亮扇区、发光描边、中心显示音效名称
 - **播放目标可配**：只发麦克风 / 只走扬声器 / 两者同时（Soundpad 侧需要在"麦克风"设备上正常工作）
 - **托盘常驻**：托盘菜单可打开轮盘、改设置、刷新列表、打开数据目录、退出
@@ -75,6 +76,29 @@ SoundWheel 是一个独立的小程序（单文件 exe，无需安装运行时�
 | 点按模式：左键点击扇区 | 播放该音效并关闭 |
 | 点按模式：15 秒无操作 | 自动关闭 |
 
+---
+
+## 在 FPS / 第一人称游戏里使用
+
+很多第一人称游戏会 **隐藏系统光标**、把鼠标指针 **锁在屏幕中央**（`ClipCursor`），再用原始输入（Raw Input）转动视角。此时用普通的"读光标位置"方式，轮盘里的指针会一直停在中心动不了。
+
+SoundWheel 的做法：另开一个 1×1 的隐藏窗口接收 `WM_INPUT` 原始鼠标事件，按相对位移推动轮盘里的虚拟指针。
+
+- **跟踪方式**（设置 → **游戏与鼠标**）
+  - **自动判断**（默认）：打开轮盘后 120–180ms 内检测光标是否被隐藏 / 被裁剪 / 是否收到原始位移，发现游戏行为就自动切到相对位移
+  - **绝对坐标**：只用光标位置（普通桌面程序）
+  - **相对位移**：只用原始输入（FPS / 锁定鼠标的游戏）
+- **灵敏度** 0.2–4.0：调大后鼠标移动同样的距离，轮盘里的指针走得更快
+- **自检**：在目标程序（例如游戏）里打开轮盘后，点 **检测鼠标状态**，可以直接看到"光标是否隐藏 / 裁剪矩形 / 是否被锁定"
+
+![游戏与鼠标设置页](assets/settings-mouse.png)
+
+需要注意的取舍：
+
+1. 相对位移模式下 **游戏视角仍然会跟着转** —— 本程序只旁听原始输入，无法拦截游戏本身。所以建议用 **按住模式**（按住热键 → 甩到目标扇区 → 松开），不要用左键点击，避免在游戏里误触开枪。
+2. 少数游戏或反作弊会把原始输入完全屏蔽，这时轮盘里的指示点可能不动；可以在 **游戏窗口化 / 无边框** 模式下用点按模式，或改用绝对坐标模式。
+3. 如果 1.6 秒内一个原始输入事件都没收到，日志里会写一行告警，方便排查。
+
 **关于"自动切换点按模式"**：程序靠轮询按键状态判断"松开了没有"。极少数情况下（远程桌面、独占全屏、被反作弊/输入法/其他输入软件抢占等情况）读不到按键状态，此时轮盘打开约 2.5 秒后会自动切换到点按模式，中心提示会从"松开播放"变成"点击播放"，此时用鼠标左键点选即可 —— 功能不会被卡死。
 
 ---
@@ -86,6 +110,7 @@ SoundWheel 是一个独立的小程序（单文件 exe，无需安装运行时�
 | **常规** | 快捷键（点输入框后按下组合键，Backspace 清除）、点按模式、播放目标（麦克风 / 扬声器 / 播放提示）、外观与布局（整体大小、内圈格数、外圈格数、主题色、动画）、启动与数据（登录时自动启动、配置文件路径）、使用说明 |
 | **轮盘布局** | 刷新音效列表；内圈 1–12、外圈 0–16 逐格下拉分配（显示为 `序号 · 名称`，`（空）` 表示不分配） |
 | **音效库** | 只读列表，确认 Soundpad 里读到了什么（编号 = `All sounds` 顺序 = `DoPlaySound` 的索引） |
+| **游戏与鼠标** | 鼠标跟踪方式（自动判断 / 绝对坐标 / 相对位移）、灵敏度、鼠标状态自检、FPS 使用说明 |
 | **关于** | 版本与说明 |
 
 底部固定栏：**预览轮盘**（不用热键、直接在屏幕中心打开轮盘 3 秒）、**保存**、**取消**。
@@ -113,7 +138,7 @@ SoundWheel 是一个独立的小程序（单文件 exe，无需安装运行时�
 ## 命令行参数
 
 ```
-SoundWheel.exe [--data <目录>] [--preview [秒]] [--settings] [--debug-keys]
+SoundWheel.exe [--data <目录>] [--preview [秒]] [--settings] [--debug-keys] [--debug-mouse]
 ```
 
 | 参数 | 说明 |
@@ -122,6 +147,7 @@ SoundWheel.exe [--data <目录>] [--preview [秒]] [--settings] [--debug-keys]
 | `--settings` | 直接打开设置窗口（不起托盘、不注册热键） |
 | `--data <目录>` | 指定数据目录（优先级高于 `SOUNDWHEEL_DATA`） |
 | `--debug-keys` | 把按键原始状态写进日志（排查"按住/松开"不生效时使用） |
+| `--debug-mouse` | 把每条原始鼠标位移、跟踪模式切换写进日志（排查 FPS 里指针不动时使用） |
 
 单实例：同一时间只允许一个 SoundWheel 进程，重复启动会提示"SoundWheel 已经在运行，请在系统托盘中查看。"
 
@@ -162,7 +188,8 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 | `src\Program.cs` | 入口、DPI 感知、命令行解析、单实例、预览/设置模式 |
 | `src\App.cs` | 托盘、热键注册、播放调度、Soundpad 重连、开机自启、退出清理 |
 | `src\WheelWindow.cs` | 轮盘窗口：分层窗口绘制、扇区几何、命中测试、动画、提交逻辑 |
-| `src\SettingsForm.cs` | 设置窗口（四页 + 预览 + 保存） |
+| `src\SettingsForm.cs` | 设置窗口（五页 + 预览 + 保存） |
+| `src\RawMouse.cs` | 接收 Raw Input 的隐藏窗口（FPS / 锁定鼠标时的相对位移跟踪） |
 | `src\SoundpadClient.cs` | 命名管道客户端、`GetSoundlist` / `DoPlaySound` 命令、音效缓存 |
 | `src\Hotkey.cs` | 热键数据结构、组合键显示名、热键输入框控件 |
 | `src\Config.cs` | 配置模型（槽位、外观、播放选项）、JSON 读写、颜色工具 |
@@ -195,6 +222,7 @@ start dist\SoundWheel.exe --data examples\testdata
 - **轮盘**：无边框分层窗口 + 32bpp 预乘位图 `UpdateLayeredWindow`，实现逐像素透明和抗锯齿；窗口只覆盖轮盘包围盒（不是全屏），并带 `WS_EX_NOACTIVATE | TOOLWINDOW | TOPMOST`，不会抢走游戏焦点。
 - **DPI**：进程启用 Per-Monitor V2，所有几何按显示器 DPI 手动换算，150% / 200% 缩放下不会糊也不会错位。
 - **热键**：`RegisterHotKey` + `MOD_NOREPEAT`；"是否还按着"用 `GetAsyncKeyState` 轮询（15ms），带 120ms 宽限与 6px 死区，避免"按下瞬间误播"。
+- **原始输入**：单独一个隐藏窗口注册 `RegisterRawInputDevices`（`RIDEV_INPUTSINK`）接收 `WM_INPUT`，把鼠标 `lLastX/lLastY` 累加成虚拟指针坐标。该窗口 **不能带 `WS_EX_NOACTIVATE`** —— 实测带这个样式就收不到 `WM_INPUT`；轮盘主窗口仍保持 `NOACTIVATE`，所以不会抢焦点。虚拟指针被限制在最外圈半径内，避免越界后无法悬停。
 
 ---
 
@@ -213,6 +241,12 @@ start dist\SoundWheel.exe --data examples\testdata
 - 看 `soundwheel.log` 里是否有 `播放失败` / `连接` 相关记录
 - 语音软件里听不到 → 检查本程序是否勾选"发送到麦克风"，以及 Soundpad 的麦克风设备设置
 
+**在游戏里轮盘能打开，但指针不动 / 选不中**
+- 打开 设置 → **游戏与鼠标** → 点 **检测鼠标状态**，看光标是否被隐藏或锁定
+- 跟踪方式改成 **相对位移** 再试；仍不动的话，把游戏改成窗口化 / 无边框模式
+- 加 `--debug-mouse` 启动，日志里会写跟踪模式、原始位移、以及"1.6 秒内没有收到鼠标原始输入"的告警
+- 反作弊把原始输入完全屏蔽时无解，退化为点按模式或绝对坐标
+
 **播放了错的声音**
 - Soundpad 里音效顺序变了 → 托盘 刷新音效列表，或重新保存一次布局（按标题重新匹配）
 
@@ -226,6 +260,8 @@ start dist\SoundWheel.exe --data examples\testdata
 
 - 只使用 Soundpad **All sounds** 分类的序号（这是 Remote Control API 的索引定义），不支持直接引用其他分类
 - 内圈最多 12 格、外圈最多 16 格
+- 相对位移模式只"旁听"原始输入，无法阻止游戏视角跟着转；被反作弊完全屏蔽原始输入时无法跟踪
+- 轮盘窗口本身不捕获鼠标，指针位置靠轮询 / 原始输入推算，极端卡顿时可能有 1–2 帧延迟
 - 同一时间只有一个配置（没有多套轮盘/多套配置文件）
 - 只做"播放/停止"，不修改 Soundpad 本身、不做音频编辑
 - 仅在 Windows 10/11 上测试

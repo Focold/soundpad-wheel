@@ -16,6 +16,15 @@ namespace SoundWheel
         public const int WS_EX_LAYERED = 0x00080000;
         public const int WS_EX_NOACTIVATE = 0x08000000;
 
+        public const int WM_INPUT = 0x00FF;
+        public const uint RID_INPUT = 0x10000003;
+        public const uint RIDEV_REMOVE = 0x00000001;
+        public const uint RIDEV_INPUTSINK = 0x00000100;
+        public const ushort HID_USAGE_PAGE_GENERIC = 0x01;
+        public const ushort HID_USAGE_GENERIC_MOUSE = 0x02;
+        public const uint RIM_TYPEMOUSE = 0;
+        public const uint CURSOR_SHOWING = 0x00000001;
+
         public const int SW_HIDE = 0;
         public const int SW_SHOWNOACTIVATE = 4;
         public const int ULW_ALPHA = 0x00000002;
@@ -61,6 +70,52 @@ namespace SoundWheel
             public byte BlendFlags;
             public byte SourceConstantAlpha;
             public byte AlphaFormat;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RAWINPUTDEVICE
+        {
+            public ushort usUsagePage;
+            public ushort usUsage;
+            public uint dwFlags;
+            public IntPtr hwndTarget;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RAWINPUTHEADER
+        {
+            public uint dwType;
+            public uint dwSize;
+            public IntPtr hDevice;
+            public IntPtr wParam;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RAWMOUSE
+        {
+            public ushort usFlags;
+            public ushort usButtonFlags;
+            public ushort usButtonData;
+            public uint ulRawButtons;
+            public int lLastX;
+            public int lLastY;
+            public uint ulExtraInformation;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RAWINPUT
+        {
+            public RAWINPUTHEADER header;
+            public RAWMOUSE mouse;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct CURSORINFO
+        {
+            public uint cbSize;
+            public uint flags;
+            public IntPtr hCursor;
+            public POINT ptScreenPos;
         }
 
         [DllImport("user32.dll", SetLastError = true)]
@@ -194,6 +249,117 @@ namespace SoundWheel
         public static void HideWindow(IntPtr hwnd)
         {
             ShowWindow(hwnd, SW_HIDE);
+        }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool RegisterRawInputDevices(RAWINPUTDEVICE[] pRawInputDevices,
+            uint uiNumDevices, uint cbSize);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern uint GetRawInputData(IntPtr hRawInput, uint uiCommand, IntPtr pData,
+            ref uint pcbSize, uint cbSizeHeader);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool GetClipCursor(out RECT lpRect);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool GetCursorInfo(ref CURSORINFO pci);
+
+        // 注册鼠标原始输入：RIDEV_INPUTSINK 让窗口即使不在前台也能收到相对位移
+        public static bool RegisterRawMouse(IntPtr hwnd, bool enable)
+        {
+            try
+            {
+                RAWINPUTDEVICE[] devices = new RAWINPUTDEVICE[1];
+                devices[0].usUsagePage = HID_USAGE_PAGE_GENERIC;
+                devices[0].usUsage = HID_USAGE_GENERIC_MOUSE;
+                devices[0].dwFlags = enable ? RIDEV_INPUTSINK : RIDEV_REMOVE;
+                devices[0].hwndTarget = enable ? hwnd : IntPtr.Zero;
+                return RegisterRawInputDevices(devices, 1, (uint)Marshal.SizeOf(typeof(RAWINPUTDEVICE)));
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        // 从 WM_INPUT 的 lParam 里取出鼠标相对位移（设备计数，未缩放）
+        public static bool ReadRawMouse(IntPtr lParam, out int dx, out int dy)
+        {
+            dx = 0;
+            dy = 0;
+            try
+            {
+                uint headerSize = (uint)Marshal.SizeOf(typeof(RAWINPUTHEADER));
+                uint size = 0;
+                if (GetRawInputData(lParam, RID_INPUT, IntPtr.Zero, ref size, headerSize) != 0) return false;
+                if (size == 0 || size > 1024) return false;
+
+                IntPtr buffer = Marshal.AllocHGlobal((int)size);
+                try
+                {
+                    uint read = GetRawInputData(lParam, RID_INPUT, buffer, ref size, headerSize);
+                    if (read != size) return false;
+                    RAWINPUT raw = (RAWINPUT)Marshal.PtrToStructure(buffer, typeof(RAWINPUT));
+                    if (raw.header.dwType != RIM_TYPEMOUSE) return false;
+                    dx = raw.mouse.lLastX;
+                    dy = raw.mouse.lLastY;
+                    return true;
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(buffer);
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        public static bool CursorHidden()
+        {
+            try
+            {
+                CURSORINFO info = new CURSORINFO();
+                info.cbSize = (uint)Marshal.SizeOf(typeof(CURSORINFO));
+                if (!GetCursorInfo(ref info)) return false;
+                return (info.flags & CURSOR_SHOWING) == 0;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        // 光标被游戏 ClipCursor 到屏幕中心（通常是 1x1 或很小的矩形）时返回 true
+        public static bool CursorClipped()
+        {
+            try
+            {
+                RECT rect;
+                if (!GetClipCursor(out rect)) return false;
+                return rect.Width <= 32 && rect.Height <= 32;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        public static string ClipRectText()
+        {
+            try
+            {
+                RECT rect;
+                if (!GetClipCursor(out rect)) return "读取失败";
+                return rect.Left + "," + rect.Top + " - " + rect.Right + "," + rect.Bottom
+                    + "（" + rect.Width + "x" + rect.Height + "）";
+            }
+            catch (Exception)
+            {
+                return "读取失败";
+            }
         }
     }
 }

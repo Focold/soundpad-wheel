@@ -48,6 +48,9 @@ namespace SoundWheel
         private Label _status;
         private Label _statusLibrary;
         private ListBox _soundList;
+        private ComboBox _mouseMode;
+        private NumericUpDown _mouseSensitivity;
+        private Label _mouseProbe;
         private bool _busy;
         private float _dpiScale = 1f;
 
@@ -143,6 +146,10 @@ namespace SoundWheel
             library.BackColor = Color.FromArgb(250, 250, 252);
             BuildLibrary(library);
 
+            TabPage mouse = new TabPage("游戏与鼠标");
+            mouse.BackColor = Color.FromArgb(250, 250, 252);
+            BuildMouse(mouse);
+
             TabPage about = new TabPage("关于");
             about.BackColor = Color.FromArgb(250, 250, 252);
             BuildAbout(about);
@@ -150,6 +157,7 @@ namespace SoundWheel
             tabs.TabPages.Add(general);
             tabs.TabPages.Add(layout);
             tabs.TabPages.Add(library);
+            tabs.TabPages.Add(mouse);
             tabs.TabPages.Add(about);
 
             Panel bottom = new Panel();
@@ -480,12 +488,119 @@ namespace SoundWheel
             FillSoundList();
         }
 
+        private void BuildMouse(TabPage page)
+        {
+            GroupBox modeBox = Group("鼠标跟踪", 18, 14, 470, 286);
+
+            Label modeLabel = new Label();
+            modeLabel.Text = "方式";
+            modeLabel.Location = new Point(16, 36);
+            modeLabel.Size = new Size(56, 22);
+
+            _mouseMode = new ComboBox();
+            _mouseMode.DropDownStyle = ComboBoxStyle.DropDownList;
+            _mouseMode.Location = new Point(80, 32);
+            _mouseMode.Size = new Size(360, 26);
+            _mouseMode.Items.Add("自动判断（推荐）");
+            _mouseMode.Items.Add("绝对坐标（桌面程序）");
+            _mouseMode.Items.Add("相对位移（游戏 / 锁定鼠标）");
+            int mode = _config.MouseMode;
+            if (mode < 0 || mode > 2) mode = 0;
+            _mouseMode.SelectedIndex = mode;
+
+            Label sensLabel = new Label();
+            sensLabel.Text = "灵敏度";
+            sensLabel.Location = new Point(16, 82);
+            sensLabel.Size = new Size(56, 22);
+
+            _mouseSensitivity = new NumericUpDown();
+            _mouseSensitivity.Location = new Point(80, 78);
+            _mouseSensitivity.Size = new Size(90, 26);
+            _mouseSensitivity.DecimalPlaces = 1;
+            _mouseSensitivity.Increment = 0.1m;
+            _mouseSensitivity.Minimum = 0.2m;
+            _mouseSensitivity.Maximum = 4.0m;
+            decimal sens = (decimal)_config.MouseSensitivity;
+            if (sens < 0.2m) sens = 0.2m;
+            if (sens > 4.0m) sens = 4.0m;
+            _mouseSensitivity.Value = sens;
+
+            Label modeHint = new Label();
+            modeHint.Location = new Point(16, 122);
+            modeHint.Size = new Size(434, 150);
+            modeHint.ForeColor = Color.FromArgb(110, 116, 130);
+            modeHint.Text = "自动判断：轮盘打开时会检查光标是否被隐藏、是否被限制在屏幕中心、" +
+                "以及是否收到鼠标原始位移，一旦发现游戏锁定了光标就自动改用相对位移跟踪。" + Environment.NewLine +
+                Environment.NewLine +
+                "需要固定行为时也可以手动选择：绝对坐标用于普通桌面程序；" +
+                "相对位移用于 FPS / 第一人称等隐藏并锁定光标的游戏。" + Environment.NewLine +
+                Environment.NewLine +
+                "灵敏度越大，鼠标移动同样的距离，轮盘上的指示点移动越快。";
+
+            modeBox.Controls.Add(modeLabel);
+            modeBox.Controls.Add(_mouseMode);
+            modeBox.Controls.Add(sensLabel);
+            modeBox.Controls.Add(_mouseSensitivity);
+            modeBox.Controls.Add(modeHint);
+
+            GroupBox probeBox = Group("自检", 510, 14, 450, 286);
+
+            Button probe = new Button();
+            probe.Text = "检测鼠标状态";
+            probe.Location = new Point(16, 32);
+            probe.Size = new Size(128, 30);
+            probe.FlatStyle = FlatStyle.System;
+            probe.Click += OnProbeMouse;
+
+            _mouseProbe = new Label();
+            _mouseProbe.Location = new Point(16, 74);
+            _mouseProbe.Size = new Size(418, 196);
+            _mouseProbe.ForeColor = Color.FromArgb(80, 88, 104);
+            _mouseProbe.Text = "在目标程序（例如游戏）里打开轮盘后点这里，可以查看系统光标是否被隐藏或锁定。";
+
+            probeBox.Controls.Add(probe);
+            probeBox.Controls.Add(_mouseProbe);
+
+            GroupBox tipsBox = Group("说明", 18, 316, 942, 206);
+
+            Label tipsLabel = new Label();
+            tipsLabel.Location = new Point(16, 26);
+            tipsLabel.Size = new Size(910, 164);
+            tipsLabel.Text = "① 第一人称游戏会隐藏系统光标、把光标锁在屏幕中心，用原始输入（Raw Input）转动视角；" +
+                "此时轮盘要靠相对位移才能选择，选『自动判断』或『相对位移』即可。" + Environment.NewLine +
+                Environment.NewLine +
+                "② 相对位移模式下，游戏视角仍会跟着鼠标转动（本程序只旁听原始输入，无法拦截游戏本身），" +
+                "建议使用『按住模式』唤出，避免在游戏里用左键点击而误触开火。" + Environment.NewLine +
+                Environment.NewLine +
+                "③ 如果游戏或反作弊完全屏蔽了原始输入，轮盘里的指示点可能无法移动；" +
+                "可以尝试窗口化模式，或在『常规』页改用点按模式后再试。";
+
+            tipsBox.Controls.Add(tipsLabel);
+
+            page.Controls.Add(modeBox);
+            page.Controls.Add(probeBox);
+            page.Controls.Add(tipsBox);
+        }
+
+        private void OnProbeMouse(object sender, EventArgs e)
+        {
+            bool hidden = Native.CursorHidden();
+            bool clipped = Native.CursorClipped();
+            _mouseProbe.Text = "系统光标：" + (hidden ? "隐藏（程序可能正在锁定鼠标）" : "显示")
+                + Environment.NewLine
+                + "裁剪矩形：" + Native.ClipRectText()
+                + Environment.NewLine
+                + "锁定状态：" + (clipped ? "已锁定到屏幕中心（建议用相对位移）" : "未锁定")
+                + Environment.NewLine
+                + "数据目录：" + AppPaths.DataDir;
+        }
+
         private void BuildAbout(TabPage page)
         {
             Label about = new Label();
             about.Location = new Point(24, 24);
             about.Size = new Size(920, 500);
-            about.Text = "SoundWheel 1.0" + Environment.NewLine + Environment.NewLine +
+            about.Text = "SoundWheel 1.1" + Environment.NewLine + Environment.NewLine +
                 "Soundpad 音效轮盘：按住热键在鼠标位置弹出轮盘，移动鼠标选择音效，松开即播放。" +
                 Environment.NewLine + Environment.NewLine +
                 "本程序通过 Soundpad 官方远程控制接口（命名管道）工作，不修改 Soundpad 安装文件。" +
@@ -661,6 +776,8 @@ namespace SoundWheel
             config.InnerCount = (int)_innerCount.Value;
             config.OuterCount = (int)_outerCount.Value;
             config.Accent = ColorUtil.ToHex(_swatch.BackColor);
+            config.MouseMode = _mouseMode.SelectedIndex < 0 ? 0 : _mouseMode.SelectedIndex;
+            config.MouseSensitivity = (double)_mouseSensitivity.Value;
 
             for (int i = 0; i < _inner.Length; i++)
             {
