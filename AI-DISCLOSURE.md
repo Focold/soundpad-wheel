@@ -18,7 +18,7 @@
 
 ### AI 直接产出的内容
 
-- `src/*.cs` —— 全部 14 个源文件（约 6,000 行）
+- `src/*.cs` —— 全部 15 个源文件（约 6,300 行）
 - `tools/*.cs` —— MockSoundpad 假服务器、图标生成器与开发期测试工具
 - `build.cmd` / `build.ps1` —— 构建脚本
 - `assets/app.ico` —— 由 `tools/MakeIcon.cs` 程序化绘制（GDI+ 画轮盘 + 手写 ICO 编码器），非第三方素材
@@ -47,6 +47,16 @@
   - 用 `PostMessage(hwnd, WM_LBUTTONUP, ...)` 触发提交，日志为 `提交 cursor=1450,562 rel=True ... ring=1 slot=1 item=10 倒计时` → `预览选择: 倒计时`
   - 设置页「游戏与鼠标」在 150% DPI 下截图确认无裁切
 - 未验证：真实游戏里的原始输入行为（测试机无法注入真实设备事件，且反作弊环境不可控）、光标被 `ClipCursor` 锁定时的自动切换（代码路径已实现并截图验证渲染，但真实锁定场景未复现）
+
+## v1.2.0 增补（接管鼠标 + 简化 UI）
+
+- 新增 `src/MouseHook.cs`（`WH_MOUSE_LL` 低级鼠标钩子）；`WheelWindow` 增加接管逻辑、光标同步（`SyncCapturedCursor`）、深色底盘（`DrawBase`）与单行文字绘制；`Config` 新增 `captureMouse`；设置页「游戏与鼠标」增加接管复选框
+- 验证方式（实机，Windows 11 150% DPI）：
+  - 应用日志确认钩子安装成功（`鼠标钩子已安装`、`接管=True`），并且一次真实右键被钩子捕获后正确触发 `右键取消`
+  - 关闭接管时用 `SOUNDWHEEL_FAKE_RAW=1` 合成位移，截图确认简化后的扇区、单行标签、中心单行标题、指针小圆点、底盘遮住缝隙
+  - 用"整屏深色底板 + 显式把轮盘窗口提到最前"的方式截取新版界面（`assets/wheel.png`）；设置页用 `PrintWindow` 截取（`assets/settings-mouse.png`）
+  - 用 Z 序枚举确认轮盘窗口（TOPMOST）位于游戏窗口之上
+- 未验证：真实游戏内的接管手感（测试机无法稳定注入鼠标事件）、与各反作弊/独占全屏游戏的兼容性
 
 ## 验证情况（截至 v1.0.0）
 

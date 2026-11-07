@@ -25,8 +25,8 @@ SoundWheel is a standalone single-file `.exe` (no runtime install). It drives So
 - **Two rings** — inner 1–12 slots, outer 0–16 slots, assigned independently
 - **Two modes** — hold-to-play (release = play) or click-to-play
 - **Cancel with right click / Esc**
-- **FPS / first-person friendly** — when a game hides the cursor or clips it to the screen centre, the wheel switches to **Raw Input relative movement** and still works (see [Using it in FPS games](#using-it-in-fps--first-person-games))
-- **Hover feedback** — highlighted sector, glow, sound name in the centre hub
+- **Mouse capture / FPS friendly** — while the wheel is open a low-level mouse hook takes over the mouse, so the game no longer turns or fires; the mouse is handed back the instant the wheel closes (see [Using it in FPS games](#using-it-in-fps--first-person-games))
+- **Hover feedback** — the hovered sector lights up, its name shows in the centre hub, and a small dot marks the pointer
 - **Playback target** — microphone only / speakers only / both
 - **Tray resident** — open wheel, settings, refresh list, open data folder, quit
 - **Appearance** — overall scale 70–160 %, accent colour, slot counts, animations
@@ -65,16 +65,24 @@ Soundpad's remote control is enabled by default; no option has to be ticked.
 ## Using it in FPS / first-person games
 
 Many first-person games **hide the system cursor**, **lock the pointer to the middle of the screen** (`ClipCursor`)
-and rotate the camera from raw input. A wheel that simply reads the cursor position would sit frozen in the centre.
+and rotate the camera from raw input. With a plain "read the cursor position" wheel you would not only fail to pick a
+sector — the mouse would still be driving the game: one twitch turns the camera, one click fires.
 
-SoundWheel creates a second, 1×1 hidden window that registers for `WM_INPUT` and accumulates the raw mouse deltas
-into a virtual pointer.
+Since 1.2 SoundWheel therefore **takes the mouse over while the wheel is open**:
 
-- **Tracking mode** (Settings → **游戏与鼠标** / Game & mouse)
-  - **Auto** (default) — within 120–180 ms of opening it checks whether the cursor is hidden, clipped to a tiny
-    rectangle, or whether raw movement arrives, and switches to relative mode when the game is in control
+- a low-level mouse hook (`WH_MOUSE_LL`) **swallows movement, clicks and the wheel** instead of passing them to the game,
+  and feeds them to the virtual pointer inside the wheel;
+- releasing the hotkey (hold mode) or left-clicking a sector (click mode) plays the sound and **hands the mouse straight back**;
+  right click / Esc cancel and release it as well;
+- this only lasts the few hundred milliseconds the wheel is up.
+
+The switch is 设置 → **游戏与鼠标** → **打开轮盘时接管鼠标** (on by default).
+
+- **Tracking mode** (same page)
+  - **Auto** (default) — after opening, checks whether the cursor is hidden, clipped to the screen centre, or whether
+    raw movement arrives, and switches to relative movement when the game is in control
   - **Absolute** — cursor position only (ordinary desktop apps)
-  - **Relative** — raw input only (FPS / pointer-locked games)
+  - **Relative** — raw deltas only (that is what capture uses anyway)
 - **Sensitivity** 0.2–4.0 — the virtual pointer travels further per mouse count
 - **Self-check** — press **检测鼠标状态** while the wheel is open in the game to see whether the cursor is hidden or clipped
 
@@ -82,11 +90,13 @@ into a virtual pointer.
 
 Trade-offs:
 
-1. In relative mode the **in-game camera still turns** — the app only listens to raw input, it cannot block the
-   game. Prefer the **hold mode** (hold hotkey → flick → release) instead of left-clicking, so you never fire by accident.
-2. Some games / anti-cheat stacks block raw input completely; then the pointer may not move at all. Try windowed or
-   borderless mode, click-to-play, or absolute mode.
-3. If no raw input event arrives within 1.6 s, the log records a warning to make this easy to diagnose.
+1. Capture relies on the system low-level mouse hook. If the game runs **as administrator** (higher integrity than this
+   app) the hook receives no events and the app degrades to "follow the real cursor", with a warning in the log; run the
+   game windowed/borderless or at the same privilege level.
+2. A few games read raw input directly; the hook cannot stop those from turning a little — prefer the **hold mode**
+   (hold hotkey → flick to the sector → release).
+3. Under **exclusive fullscreen** Windows does not allow any ordinary window on top of the game, so the wheel is invisible.
+   Use **windowed** or **borderless fullscreen** — the same prerequisite as every overlay tool (Discord, Steam, OBS).
 
 ---
 
@@ -101,10 +111,16 @@ Trade-offs:
 - **DPI** — Per-Monitor V2 aware; all geometry scaled by the monitor DPI (100 %/150 %/200 %).
 - **Hotkey** — `RegisterHotKey` + `MOD_NOREPEAT`; "is it still held?" is polled with `GetAsyncKeyState`
   (15 ms) with a 120 ms grace period and a 6 px dead zone, so the wheel never plays something by accident.
-- **Raw input** — a separate hidden window registers `RegisterRawInputDevices` (`RIDEV_INPUTSINK`) and turns `WM_INPUT`
-  `lLastX/lLastY` into the virtual pointer. That window must **not** carry `WS_EX_NOACTIVATE` — with that style it
-  receives no `WM_INPUT` at all (measured on Windows 11). The wheel itself stays `NOACTIVATE` so focus is never stolen.
+- **Mouse capture** — a `WH_MOUSE_LL` hook is installed while the wheel is open; the callback returns 1 for movement,
+  clicks and wheel events (so the game never sees them) and feeds the deltas to the virtual pointer. The hook is removed
+  the moment the wheel closes. Every frame `SetCursorPos` moves the real cursor onto the virtual pointer (with a hook
+  `ResetBase()` so the program's own move is not counted as user input), which is why the pointer is visible on screen.
+- **Raw input** — another hidden window registers `RegisterRawInputDevices` (`RIDEV_INPUTSINK`) and turns `WM_INPUT`
+  `lLastX/lLastY` into the virtual pointer as a backup source. That window must **not** carry `WS_EX_NOACTIVATE` — with
+  that style it receives no `WM_INPUT` at all (measured on Windows 11), so it lives in its own window without the style.
   The virtual pointer is clamped to the outermost ring radius so it can always hit a sector.
+- **Drawing** — flat single-colour sectors over one dark base disc (which hides the seams between sectors); the centre
+  hub only shows the hovered sound name, and the pointer dot is drawn outside the hub.
 - **Drift-proof slots** — each slot stores `title` + `index`; on play the title is resolved against the live
   sound list and only falls back to the stored index.
 
@@ -185,7 +201,9 @@ A ready-made example configuration is included in `examples\testdata`.
 - **Wrong sound plays** — the order changed inside Soundpad; refresh the list (matching is title-first).
 - **Wheel opens in a game but the pointer will not move** — Settings → **Game & mouse** → **检测鼠标状态** to see
   whether the cursor is hidden or clipped; switch tracking to **Relative**; try windowed/borderless mode; run with
-  `--debug-mouse` and check the log for the "no raw input within 1.6 s" warning.
+  `--debug-mouse` and check the log for the "no hook events" / "no raw input within 1.6 s" warnings.
+- **Mouse captured but the camera still turns** — a few games read raw input directly; use hold mode, or run the game
+  windowed. If the log says no hook events arrived, the game is running at a higher integrity level than SoundWheel.
 
 ---
 
@@ -193,10 +211,10 @@ A ready-made example configuration is included in `examples\testdata`.
 
 - Only the **All sounds** category index is used (that is what the Remote Control API exposes)
 - Max 12 inner + 16 outer slots, one configuration at a time
-- Relative mode only listens to raw input — it cannot stop the in-game camera from turning; if anti-cheat blocks
-  raw input entirely the pointer cannot be tracked
-- The wheel does not capture the mouse itself; the pointer is derived from polling/raw input, so a badly stuttering
-  game may lag it by a frame or two
+- Mouse capture relies on `WH_MOUSE_LL`; a higher-integrity foreground app (elevated game) means the hook gets no
+  events and the app degrades to following the real cursor
+- A few games read raw input directly and still turn; under exclusive fullscreen the wheel cannot be shown at all
+- The pointer is derived from hook events / cursor position, so a badly stuttering game may lag it by a frame or two
 - Playback/stop only — it never edits audio or Soundpad's own data
 - UI is Chinese-only; tested on Windows 11 at 150 % DPI
 

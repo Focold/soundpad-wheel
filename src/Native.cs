@@ -361,5 +361,44 @@ namespace SoundWheel
                 return "读取失败";
             }
         }
+
+        // ---------- 低级鼠标钩子：打开轮盘时把鼠标接管过来 ----------
+
+        public const int WH_MOUSE_LL = 14;
+        public const int HC_ACTION = 0;
+        public const int LLMHF_INJECTED = 0x00000001;
+        public const int LLMHF_LOWER_IL_INJECTED = 0x00000002;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MSLLHOOKSTRUCT
+        {
+            public POINT pt;
+            public uint mouseData;
+            public uint flags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        public delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool SetCursorPos(int x, int y);
+
+        [DllImport("kernel32.dll")]
+        public static extern IntPtr GetModuleHandle(string lpModuleName);
+
+        public static int LowWord(IntPtr v)
+        {
+            return (int)(v.ToInt64() & 0xFFFF);
+        }
     }
 }

@@ -41,6 +41,7 @@ namespace SoundWheel
         public int OuterCount = 12;
         public int MouseMode = 0;              // 0=自动 1=绝对坐标 2=相对位移
         public double MouseSensitivity = 1.0;  // 相对位移灵敏度
+        public bool CaptureMouse = true;       // 打开轮盘时用低级鼠标钩子接管鼠标（吞掉移动/点击）
         public List<SlotConfig> Inner = new List<SlotConfig>();
         public List<SlotConfig> Outer = new List<SlotConfig>();
 
@@ -93,6 +94,7 @@ namespace SoundWheel
                 cfg.OuterCount = Json.Int(root, "outerCount", 12);
                 cfg.MouseMode = Json.Int(root, "mouseMode", 0);
                 cfg.MouseSensitivity = Json.Dbl(root, "mouseSensitivity", 1.0);
+                cfg.CaptureMouse = Json.Bool(root, "captureMouse", true);
 
                 ReadSlots(cfg.Inner, Json.GetArr(root, "inner"));
                 ReadSlots(cfg.Outer, Json.GetArr(root, "outer"));
@@ -135,6 +137,7 @@ namespace SoundWheel
             root["outerCount"] = OuterCount;
             root["mouseMode"] = MouseMode;
             root["mouseSensitivity"] = Math.Round(MouseSensitivity, 2);
+            root["captureMouse"] = CaptureMouse;
             root["inner"] = SlotsToJson(Inner);
             root["outer"] = SlotsToJson(Outer);
 

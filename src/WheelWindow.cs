@@ -34,8 +34,8 @@ namespace SoundWheel
         public void Build(float scale, int innerCount, int outerCount)
         {
             Scale = scale;
-            HubR = 54f * scale;
-            InnerIn = 62f * scale;
+            HubR = 50f * scale;
+            InnerIn = 58f * scale;
             InnerOut = 150f * scale;
             OuterIn = 159f * scale;
             OuterOut = 247f * scale;
@@ -85,6 +85,13 @@ namespace SoundWheel
         private bool _rawWarned;
         private bool _rawRegistered;
         private RawMouseWindow _rawWindow;
+        private MouseHook _hook;
+        private bool _capturing;
+        private bool _leftPending;
+        private bool _rightPending;
+        private int _lastHookEvents;
+        private bool _captureWarned;
+        private Point _cursorSynced;
         private Point _lastCursorSample;
         private DateTime _lastCursorChange;
 
@@ -186,8 +193,31 @@ namespace SoundWheel
                 Native.ShowNoActivate(_rawWindow.Handle);
             }
             _rawRegistered = _rawWindow.Register();
+            _leftPending = false;
+            _rightPending = false;
+            _capturing = false;
+            _captureWarned = false;
+            if (_config.CaptureMouse)
+            {
+                if (_hook == null)
+                {
+                    _hook = new MouseHook();
+                    _hook.Moved += OnHookMouse;
+                    _hook.LeftClick += OnHookLeft;
+                    _hook.RightClick += OnHookRight;
+                }
+                if (_hook.Install())
+                {
+                    _hook.Capturing = true;
+                    _capturing = true;
+                    _relative = true;
+                    _rawAccum = 0f;
+                    _lastHookEvents = _hook.EventCount;
+                    _cursorSynced = new Point((int)Math.Round(_vx), (int)Math.Round(_vy));
+                }
+            }
             Log.Info("鼠标跟踪 设置=" + MouseModeText(_config.MouseMode) + " 实际=" + (_relative ? "相对" : "绝对")
-                + " 原始输入=" + _rawRegistered + " 窗口=" + _rawWindow.Handle
+                + " 接管=" + _capturing + " 原始输入=" + _rawRegistered + " 窗口=" + _rawWindow.Handle
                 + " 灵敏度=" + _config.MouseSensitivity.ToString("0.0"));
             _timer.Start();
             Render();
@@ -204,6 +234,10 @@ namespace SoundWheel
                 _rawRegistered = false;
                 _rawWindow.Unregister();
             }
+            if (_hook != null) _hook.Uninstall();
+            _capturing = false;
+            _leftPending = false;
+            _rightPending = false;
             Native.HideWindow(Handle);
         }
 
@@ -245,7 +279,22 @@ namespace SoundWheel
             {
                 PollMouse(now);
                 if (FakeRaw && _relative && (now - _openedAt).TotalMilliseconds < 700) OnRawMouse(5, -7);
+                if (_capturing && _relative) SyncCapturedCursor();
                 UpdateHover();
+
+                if (_rightPending)
+                {
+                    _rightPending = false;
+                    Log.Info("右键取消");
+                    Cancel();
+                    return;
+                }
+                if (_leftPending)
+                {
+                    _leftPending = false;
+                    Commit();
+                    return;
+                }
 
                 if (_preview)
                 {
@@ -344,10 +393,19 @@ namespace SoundWheel
                 _lastCursorChange = now;
             }
             if (!_preview && _openedAt != DateTime.MinValue && !_rawWarned && (now - _openedAt).TotalMilliseconds > 1600
-                && _relative && _rawRegistered && _rawAccum <= 0f)
+                && _relative && !_capturing && _rawRegistered && _rawAccum <= 0f)
             {
                 _rawWarned = true;
                 Log.Info("警告：1.6 秒内没有收到鼠标原始输入，相对位移可能不可用（可在设置『游戏与鼠标』页检查跟踪方式）");
+            }
+            if (_capturing)
+            {
+                if (!_captureWarned && _hook != null && _hook.EventCount == 0 && (now - _openedAt).TotalMilliseconds > 1500)
+                {
+                    _captureWarned = true;
+                    Log.Info("警告：接管鼠标期间没有收到钩子事件（可能有更高权限的程序在前台），改用光标位置跟踪");
+                }
+                return;
             }
             if (_relative || _preview || _config.MouseMode != 0) return;
             if ((now - _openedAt).TotalMilliseconds < 150) return;
@@ -376,6 +434,43 @@ namespace SoundWheel
             _vx = from.X;
             _vy = from.Y;
             Log.Info("鼠标改为相对跟踪：" + reason + "（起点 " + from.X + "," + from.Y + "）");
+        }
+
+        // 回调里只累加位移，光标同步放到每个 tick 做，避免在钩子回调里再次触发鼠标事件
+        private void OnHookMouse(int dx, int dy)
+        {
+            OnRawMouse(dx, dy);
+        }
+
+        // 把真实光标钉在虚拟指针上：游戏和桌面都只看到轮盘里的位置
+        // 如果钩子拿不到事件（例如前台是管理员权限的游戏），就退化为跟随真实光标移动
+        private void SyncCapturedCursor()
+        {
+            int events = _hook == null ? 0 : _hook.EventCount;
+            bool hookAlive = events != _lastHookEvents;
+            Point cur = Cursor.Position;
+            if (!hookAlive && (cur.X != _cursorSynced.X || cur.Y != _cursorSynced.Y))
+            {
+                _vx += cur.X - _cursorSynced.X;
+                _vy += cur.Y - _cursorSynced.Y;
+                ClampVirtual();
+            }
+            _lastHookEvents = events;
+            int tx = (int)Math.Round(_vx);
+            int ty = (int)Math.Round(_vy);
+            Native.SetCursorPos(tx, ty);
+            _cursorSynced = new Point(tx, ty);
+            if (_hook != null) _hook.ResetBase();
+        }
+
+        private void OnHookLeft()
+        {
+            _leftPending = true;
+        }
+
+        private void OnHookRight()
+        {
+            _rightPending = true;
         }
 
         private void OnRawMouseEvent(int dx, int dy)
@@ -560,45 +655,35 @@ namespace SoundWheel
         private void DrawScene(Graphics g)
         {
             Color accent = _config.AccentColor;
-            float maxR = _geo.OuterCount > 0 ? _geo.OuterOut : _geo.InnerOut;
-            DrawShadow(g, maxR);
-
-            using (Font innerFont = MakeFont((15f * _geo.Scale) / 1f, false))
-            using (Font outerFont = MakeFont(13f * _geo.Scale, false))
+            using (Font innerFont = MakeFont(14.5f * _geo.Scale, false))
+            using (Font outerFont = MakeFont(12.5f * _geo.Scale, false))
             using (Font hubFont = MakeFont(15f * _geo.Scale, true))
-            using (Font hintFont = MakeFont(9.5f * _geo.Scale, false))
             {
+                DrawBase(g);
                 DrawRing(g, _inner, _geo.InnerIn, _geo.InnerOut, 0, true, innerFont);
                 if (_geo.OuterCount > 0)
                     DrawRing(g, _outer, _geo.OuterIn, _geo.OuterOut, 1, false, outerFont);
-                DrawHub(g, hubFont, hintFont, accent);
+                DrawHub(g, hubFont, accent);
                 DrawPointer(g, accent);
             }
         }
 
-        // 相对模式下系统光标可能被游戏锁住，这里画一个虚拟指针表示当前选择位置
+        // 相对跟踪时（游戏隐藏/锁定光标，或接管鼠标后触摸板式操作），用小圆点表示当前选择位置
         private void DrawPointer(Graphics g, Color accent)
         {
             if (!_relative) return;
             float x = _vx - _bounds.X;
             float y = _vy - _bounds.Y;
-            float r = 5f * _geo.Scale;
-
-            using (GraphicsPath halo = new GraphicsPath())
-            {
-                halo.AddEllipse(x - r * 3f, y - r * 3f, r * 6f, r * 6f);
-                using (PathGradientBrush brush = new PathGradientBrush(halo))
-                {
-                    brush.CenterColor = Color.FromArgb(A(110), accent);
-                    brush.SurroundColors = new Color[] { Color.FromArgb(0, accent) };
-                    g.FillPath(brush, halo);
-                }
-            }
-            using (SolidBrush fill = new SolidBrush(Color.FromArgb(A(255), 250, 252, 255)))
+            float dx = x - _geo.Center;
+            float dy = y - _geo.Center;
+            // 指到中心盘上时不再画点，中心盘本身会显示当前音效名
+            if (dx * dx + dy * dy < _geo.HubR * _geo.HubR) return;
+            float r = 4f * _geo.Scale;
+            using (SolidBrush fill = new SolidBrush(Color.FromArgb(A(255), 255, 255, 255)))
             {
                 g.FillEllipse(fill, x - r, y - r, r * 2f, r * 2f);
             }
-            using (Pen border = new Pen(Color.FromArgb(A(220), accent), Math.Max(1.4f, 1.2f * _geo.Scale)))
+            using (Pen border = new Pen(Color.FromArgb(A(230), accent), Math.Max(1f, _geo.Scale)))
             {
                 g.DrawEllipse(border, x - r, y - r, r * 2f, r * 2f);
             }
@@ -610,19 +695,15 @@ namespace SoundWheel
             return new Font("Microsoft YaHei UI", pixelSize, bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel);
         }
 
-        private void DrawShadow(Graphics g, float maxR)
+
+        // 整块深色底盘：让扇区之间的缝隙、环与环之间的空隙保持深色，不会漏出桌面内容
+        private void DrawBase(Graphics g)
         {
-            float r = maxR + _geo.Margin * 0.55f;
-            using (GraphicsPath path = new GraphicsPath())
+            float r = _geo.OuterCount > 0 ? _geo.OuterOut : _geo.InnerOut;
+            float cx = _geo.Center;
+            using (SolidBrush brush = new SolidBrush(Color.FromArgb(A(232), 11, 14, 20)))
             {
-                path.AddEllipse(_geo.Center - r, _geo.Center - r + 5f * _geo.Scale, r * 2f, r * 2f);
-                using (PathGradientBrush brush = new PathGradientBrush(path))
-                {
-                    brush.CenterColor = Color.FromArgb(A(90), 0, 0, 0);
-                    brush.SurroundColors = new Color[] { Color.FromArgb(0, 0, 0, 0) };
-                    brush.SetSigmaBellShape(0.45f);
-                    g.FillPath(brush, path);
-                }
+                g.FillEllipse(brush, cx - r, cx - r, r * 2f, r * 2f);
             }
         }
 
@@ -631,8 +712,11 @@ namespace SoundWheel
             int n = items.Count;
             if (n <= 0) return;
             float span = 360f / n;
-            float pad = Math.Min(1.4f, span * 0.05f);
+            float pad = inner ? 0.6f : 0.9f;
             int hovered = _hoverRing == ringIndex ? _hoverSlot : -1;
+            Color accent = _config.AccentColor;
+            Color baseFill = inner ? Color.FromArgb(255, 27, 31, 41) : Color.FromArgb(255, 22, 26, 34);
+            Color emptyFill = Color.FromArgb(255, 17, 20, 26);
 
             for (int i = 0; i < n; i++)
             {
@@ -640,64 +724,29 @@ namespace SoundWheel
                 using (GraphicsPath path = SegmentPath(rIn, rOut, i * span + pad, (i + 1) * span - pad))
                 {
                     WheelItem item = items[i];
-                    Color fill;
-                    if (item.Assigned)
-                    {
-                        Color hue = ColorUtil.FromHsl((215 + i * 37) % 360, 0.5, 0.55);
-                        Color baseFill = inner ? Color.FromArgb(255, 20, 24, 32) : Color.FromArgb(255, 25, 29, 38);
-                        fill = ColorUtil.Mix(baseFill, hue, 0.15);
-                    }
-                    else
-                    {
-                        fill = Color.FromArgb(255, 26, 30, 38);
-                    }
-                    int alpha = item.Assigned ? A(252) : A(200);
+                    Color fill = item.Assigned ? baseFill : emptyFill;
+                    int alpha = item.Assigned ? A(240) : A(140);
                     using (SolidBrush brush = new SolidBrush(Color.FromArgb(alpha, fill)))
                         g.FillPath(brush, path);
                 }
             }
 
+            // 高亮：整块填强调色，去掉渐变、发光和外描边
             if (hovered >= 0 && hovered < n)
             {
                 using (GraphicsPath path = SegmentPath(rIn, rOut, hovered * span + pad, (hovered + 1) * span - pad))
                 {
-                    Color accent = _config.AccentColor;
-                    using (Pen glow = new Pen(Color.FromArgb(A(60), accent), 7f))
-                    using (Pen glow2 = new Pen(Color.FromArgb(A(40), accent), 13f))
-                    {
-                        glow.LineJoin = LineJoin.Round;
-                        glow2.LineJoin = LineJoin.Round;
-                        g.DrawPath(glow2, path);
-                        g.DrawPath(glow, path);
-                    }
-
-                    RectangleF bounds = path.GetBounds();
-                    if (bounds.Width < 1f) bounds.Width = 1f;
-                    if (bounds.Height < 1f) bounds.Height = 1f;
-                    using (LinearGradientBrush fill = new LinearGradientBrush(bounds,
-                        Color.FromArgb(A(255), ColorUtil.Mix(accent, Color.White, 0.18)),
-                        Color.FromArgb(A(255), ColorUtil.Mix(accent, Color.Black, 0.28)),
-                        55f))
-                    {
-                        g.FillPath(fill, path);
-                    }
-                    using (Pen border = new Pen(Color.FromArgb(A(200), 255, 255, 255), 1.4f))
-                    {
-                        border.LineJoin = LineJoin.Round;
-                        g.DrawPath(border, path);
-                    }
+                    Color fill = items[hovered].Assigned ? accent : Color.FromArgb(255, 58, 66, 84);
+                    using (SolidBrush brush = new SolidBrush(Color.FromArgb(A(246), fill)))
+                        g.FillPath(brush, path);
                 }
             }
 
             for (int i = 0; i < n; i++)
-            {
-                if (i == hovered) continue;
-                DrawSlotText(g, items[i], i, n, rIn, rOut, false, font);
-            }
-            if (hovered >= 0 && hovered < n)
-                DrawSlotText(g, items[hovered], hovered, n, rIn, rOut, true, font);
+                DrawSlotText(g, items[i], i, n, rIn, rOut, i == hovered, font);
         }
 
+        // 每个扇区只放一行标题（放不下就用省略号），比原来两行更干净
         private void DrawSlotText(Graphics g, WheelItem item, int i, int n, float rIn, float rOut, bool hovered, Font font)
         {
             float mid = (rIn + rOut) * 0.5f;
@@ -705,21 +754,18 @@ namespace SoundWheel
             PointF center = PointOnCircle(mid, angle);
 
             float chord = (float)(2.0 * mid * Math.Sin(Math.PI / n));
-            float maxWidth = Math.Min(chord * 0.84f, (rOut - rIn) * 1.7f);
-            if (maxWidth < 12f) return;
+            float maxWidth = Math.Min(chord * 0.86f, (rOut - rIn) * 1.9f);
+            if (maxWidth < 10f) return;
 
             string text = item.Assigned && !string.IsNullOrEmpty(item.Title) ? item.Title : "空闲";
             Color color = item.Assigned
-                ? (hovered ? Color.FromArgb(255, 255, 255, 255) : Color.FromArgb(235, 240, 244, 252))
-                : Color.FromArgb(105, 200, 208, 224);
+                ? (hovered ? Color.FromArgb(255, 255, 255, 255) : Color.FromArgb(A(232), 236, 241, 250))
+                : Color.FromArgb(A(95), 200, 208, 224);
 
-            List<string> lines = WrapText(g, text, font, maxWidth, item.Assigned ? 2 : 1);
+            List<string> lines = WrapText(g, text, font, maxWidth, 1);
             if (lines.Count == 0) return;
 
-            float lineHeight = font.GetHeight(g) * 1.05f;
-            float totalHeight = lines.Count * lineHeight;
-            float top = center.Y - totalHeight / 2f;
-
+            float lineHeight = font.GetHeight(g) * 1.45f;
             StringFormat format = new StringFormat();
             format.Alignment = StringAlignment.Center;
             format.LineAlignment = StringAlignment.Center;
@@ -728,11 +774,8 @@ namespace SoundWheel
 
             using (SolidBrush brush = new SolidBrush(color))
             {
-                for (int k = 0; k < lines.Count; k++)
-                {
-                    RectangleF rect = new RectangleF(center.X - maxWidth / 2f, top + k * lineHeight, maxWidth, lineHeight);
-                    g.DrawString(lines[k], font, brush, rect, format);
-                }
+                RectangleF rect = new RectangleF(center.X - maxWidth / 2f, center.Y - lineHeight / 2f, maxWidth, lineHeight);
+                g.DrawString(lines[0], font, brush, rect, format);
             }
             format.Dispose();
         }
@@ -783,91 +826,45 @@ namespace SoundWheel
             return s + ellipsis;
         }
 
-        private void DrawHub(Graphics g, Font titleFont, Font hintFont, Color accent)
+        // 中心盘只显示当前指向的音效名，没有额外提示文字
+        private void DrawHub(Graphics g, Font titleFont, Color accent)
         {
             float cx = _geo.Center;
             float cy = _geo.Center;
             float r = _geo.HubR;
             RectangleF rect = new RectangleF(cx - r, cy - r, r * 2f, r * 2f);
 
-            using (GraphicsPath halo = new GraphicsPath())
-            {
-                halo.AddEllipse(cx - r - 6f * _geo.Scale, cy - r - 6f * _geo.Scale, (r + 6f * _geo.Scale) * 2f, (r + 6f * _geo.Scale) * 2f);
-                using (PathGradientBrush brush = new PathGradientBrush(halo))
-                {
-                    brush.CenterColor = Color.FromArgb(A(70), accent);
-                    brush.SurroundColors = new Color[] { Color.FromArgb(0, accent) };
-                    g.FillPath(brush, halo);
-                }
-            }
-
-            using (LinearGradientBrush fill = new LinearGradientBrush(rect,
-                Color.FromArgb(A(250), 33, 38, 50), Color.FromArgb(A(252), 11, 13, 18), 100f))
+            using (SolidBrush fill = new SolidBrush(Color.FromArgb(A(244), 14, 17, 23)))
             {
                 g.FillEllipse(fill, rect);
             }
-            using (Pen border = new Pen(Color.FromArgb(A(150), accent), 1.5f))
+            using (Pen border = new Pen(Color.FromArgb(A(95), accent), Math.Max(1f, _geo.Scale)))
             {
                 g.DrawEllipse(border, rect);
             }
 
             WheelItem item = HoveredItem();
-            string title;
-            string hint;
-            string hint2;
-            if (item != null && item.Assigned)
-            {
-                title = item.Title;
-                hint = (_config.ToggleMode || _toggleFallback) ? "点击播放" : "松开播放";
-                hint2 = "右键取消";
-            }
-            else if (item != null)
-            {
-                title = "空闲位置";
-                hint = "右键或 Esc 关闭";
-                hint2 = "";
-            }
-            else
-            {
-                title = "选择音效";
-                hint = "移动鼠标";
-                hint2 = "Esc 取消";
-            }
+            bool assigned = item != null && item.Assigned;
+            string title = assigned ? item.Title : (item == null ? "选择音效" : "空闲");
+            Color color = assigned
+                ? Color.FromArgb(A(252), 255, 255, 255)
+                : Color.FromArgb(A(170), 214, 221, 236);
 
-            float textWidth = r * 2f * 0.76f;
-            List<string> lines = WrapText(g, title, titleFont, textWidth, 2);
-            float lineHeight = titleFont.GetHeight(g) * 1.05f;
-            float total = lines.Count * lineHeight;
-            float top = cy - total / 2f - 7f * _geo.Scale;
+            float textWidth = r * 2f * 0.80f;
+            List<string> lines = WrapText(g, title, titleFont, textWidth, 1);
+            if (lines.Count == 0) return;
 
+            float lineHeight = titleFont.GetHeight(g) * 1.5f;
             StringFormat format = new StringFormat();
             format.Alignment = StringAlignment.Center;
             format.LineAlignment = StringAlignment.Center;
             format.FormatFlags = StringFormatFlags.NoWrap;
             format.Trimming = StringTrimming.EllipsisCharacter;
 
-            using (SolidBrush brush = new SolidBrush(Color.FromArgb(A(246), 244, 247, 255)))
+            using (SolidBrush brush = new SolidBrush(color))
             {
-                for (int k = 0; k < lines.Count; k++)
-                {
-                    RectangleF line = new RectangleF(cx - textWidth / 2f, top + k * lineHeight, textWidth, lineHeight);
-                    g.DrawString(lines[k], titleFont, brush, line, format);
-                }
-            }
-
-            float hintLineHeight = hintFont.GetHeight(g) * 1.32f;
-            RectangleF hintRect = new RectangleF(cx - textWidth / 2f, top + total + 1f * _geo.Scale, textWidth, hintLineHeight);
-            using (SolidBrush brush = new SolidBrush(Color.FromArgb(A(200), accent)))
-            {
-                g.DrawString(hint, hintFont, brush, hintRect, format);
-            }
-            if (hint2.Length > 0)
-            {
-                hintRect.Y += hintLineHeight - 3f * _geo.Scale;
-                using (SolidBrush brush = new SolidBrush(Color.FromArgb(A(135), 222, 228, 240)))
-                {
-                    g.DrawString(hint2, hintFont, brush, hintRect, format);
-                }
+                RectangleF line = new RectangleF(cx - textWidth / 2f, cy - lineHeight / 2f, textWidth, lineHeight);
+                g.DrawString(lines[0], titleFont, brush, line, format);
             }
             format.Dispose();
         }
@@ -939,6 +936,11 @@ namespace SoundWheel
                     _rawWindow.Unregister();
                     _rawWindow.Dispose();
                     _rawWindow = null;
+                }
+                if (_hook != null)
+                {
+                    _hook.Dispose();
+                    _hook = null;
                 }
             }
             base.Dispose(disposing);

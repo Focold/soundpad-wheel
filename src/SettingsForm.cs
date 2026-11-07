@@ -50,6 +50,7 @@ namespace SoundWheel
         private ListBox _soundList;
         private ComboBox _mouseMode;
         private NumericUpDown _mouseSensitivity;
+        private CheckBox _capture;
         private Label _mouseProbe;
         private bool _busy;
         private float _dpiScale = 1f;
@@ -525,22 +526,28 @@ namespace SoundWheel
             if (sens > 4.0m) sens = 4.0m;
             _mouseSensitivity.Value = sens;
 
+            _capture = new CheckBox();
+            _capture.Text = "打开轮盘时接管鼠标（点击 / 移动不再传给游戏）";
+            _capture.Location = new Point(16, 112);
+            _capture.Size = new Size(434, 24);
+            _capture.Checked = _config.CaptureMouse;
+
             Label modeHint = new Label();
-            modeHint.Location = new Point(16, 122);
-            modeHint.Size = new Size(434, 150);
+            modeHint.Location = new Point(16, 144);
+            modeHint.Size = new Size(434, 128);
             modeHint.ForeColor = Color.FromArgb(110, 116, 130);
-            modeHint.Text = "自动判断：轮盘打开时会检查光标是否被隐藏、是否被限制在屏幕中心、" +
-                "以及是否收到鼠标原始位移，一旦发现游戏锁定了光标就自动改用相对位移跟踪。" + Environment.NewLine +
+            modeHint.Text = "钩子打开时，轮盘的指针跟着鼠标走，游戏的视角不会转、也不会开枪；" +
+                "松开热键（或点一下）即播放。" + Environment.NewLine +
                 Environment.NewLine +
-                "需要固定行为时也可以手动选择：绝对坐标用于普通桌面程序；" +
-                "相对位移用于 FPS / 第一人称等隐藏并锁定光标的游戏。" + Environment.NewLine +
+                "自动判断：检查光标是否被隐藏、被限制在屏幕中心、是否收到原始位移，发现游戏接管了就切到相对位移。" + Environment.NewLine +
                 Environment.NewLine +
-                "灵敏度越大，鼠标移动同样的距离，轮盘上的指示点移动越快。";
+                "灵敏度越大，鼠标移动同样的距离，轮盘上的指针走得更快。";
 
             modeBox.Controls.Add(modeLabel);
             modeBox.Controls.Add(_mouseMode);
             modeBox.Controls.Add(sensLabel);
             modeBox.Controls.Add(_mouseSensitivity);
+            modeBox.Controls.Add(_capture);
             modeBox.Controls.Add(modeHint);
 
             GroupBox probeBox = Group("自检", 510, 14, 450, 286);
@@ -566,14 +573,13 @@ namespace SoundWheel
             Label tipsLabel = new Label();
             tipsLabel.Location = new Point(16, 26);
             tipsLabel.Size = new Size(910, 164);
-            tipsLabel.Text = "① 第一人称游戏会隐藏系统光标、把光标锁在屏幕中心，用原始输入（Raw Input）转动视角；" +
-                "此时轮盘要靠相对位移才能选择，选『自动判断』或『相对位移』即可。" + Environment.NewLine +
+            tipsLabel.Text = "① 接管鼠标后，轮盘打开期间的移动和点击都只作用于轮盘：游戏不会开枪，也不会跟着转视角。" + Environment.NewLine +
                 Environment.NewLine +
-                "② 相对位移模式下，游戏视角仍会跟着鼠标转动（本程序只旁听原始输入，无法拦截游戏本身），" +
-                "建议使用『按住模式』唤出，避免在游戏里用左键点击而误触开火。" + Environment.NewLine +
+                "② 仍有个别游戏直接读原始输入（Raw Input）来转视角，这类游戏可能还会跟着动；" +
+                "此时优先用『按住模式』唤出并快速甩到目标扇区，或在游戏里改用窗口化模式。" + Environment.NewLine +
                 Environment.NewLine +
-                "③ 如果游戏或反作弊完全屏蔽了原始输入，轮盘里的指示点可能无法移动；" +
-                "可以尝试窗口化模式，或在『常规』页改用点按模式后再试。";
+                "③ 如果游戏或反作弊屏蔽了原始输入、或不允许安装鼠标钩子，接管会失败并退回普通跟踪；" +
+                "可以关掉『接管鼠标』再试，或在『常规』页改用点按模式。";
 
             tipsBox.Controls.Add(tipsLabel);
 
@@ -600,7 +606,7 @@ namespace SoundWheel
             Label about = new Label();
             about.Location = new Point(24, 24);
             about.Size = new Size(920, 500);
-            about.Text = "SoundWheel 1.1" + Environment.NewLine + Environment.NewLine +
+            about.Text = "SoundWheel 1.2" + Environment.NewLine + Environment.NewLine +
                 "Soundpad 音效轮盘：按住热键在鼠标位置弹出轮盘，移动鼠标选择音效，松开即播放。" +
                 Environment.NewLine + Environment.NewLine +
                 "本程序通过 Soundpad 官方远程控制接口（命名管道）工作，不修改 Soundpad 安装文件。" +
@@ -778,6 +784,7 @@ namespace SoundWheel
             config.Accent = ColorUtil.ToHex(_swatch.BackColor);
             config.MouseMode = _mouseMode.SelectedIndex < 0 ? 0 : _mouseMode.SelectedIndex;
             config.MouseSensitivity = (double)_mouseSensitivity.Value;
+            config.CaptureMouse = _capture.Checked;
 
             for (int i = 0; i < _inner.Length; i++)
             {
