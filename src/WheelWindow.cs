@@ -77,6 +77,8 @@ namespace SoundWheel
         internal static bool KeyDebug;
         internal static bool MouseDebug;
         internal static bool FakeRaw;
+        // 轮盘打开期间每隔多少毫秒重新置顶一次（0 = 不重试）；无边框全屏游戏会抢 topmost
+        internal static int TopmostIntervalMs = 250;
         private bool _escDown;
         private bool _relative;
         private float _vx;
@@ -102,6 +104,9 @@ namespace SoundWheel
         private double _frameMax;
         private bool _rendering;
         private DateTime _lastRenderAt = DateTime.MinValue;
+        private DateTime _lastTopmost = DateTime.MinValue;
+        private int _coveredTicks;
+        private bool _coveredWarned;
         private Bitmap _bgCache;
         private Bitmap _labelCache;
         private Bitmap _composed;
@@ -209,6 +214,13 @@ namespace SoundWheel
                 anchor.X, anchor.Y, _bounds.X, _bounds.Y, _bounds.Width, dpiScale, _config.InnerCount, _config.OuterCount));
 
             Native.ShowNoActivate(Handle);
+            Native.TopMostNoActivate(Handle);
+            _lastTopmost = DateTime.UtcNow;
+            _coveredTicks = 0;
+            _coveredWarned = false;
+            string fgInfo;
+            bool fgFull = Native.ForegroundFullscreen(out fgInfo);
+            Log.Info("轮盘已置顶 前台全屏=" + fgFull + " " + fgInfo);
             if (_rawWindow == null)
             {
                 _rawWindow = new RawMouseWindow();
@@ -308,6 +320,38 @@ namespace SoundWheel
 
             if (!_closing)
             {
+                // 游戏（尤其 Java 版我的世界这类 GLFW 无边框全屏）会把自己保持在 topmost，
+                // 这里周期性把轮盘重新顶上去，避免窗口在但看不见
+                if (TopmostIntervalMs > 0)
+                {
+                    double sinceTop = (now - _lastTopmost).TotalMilliseconds;
+                    if (sinceTop >= TopmostIntervalMs)
+                    {
+                        _lastTopmost = now;
+                        Native.TopMostNoActivate(Handle);
+                    }
+                    else if (sinceTop >= 40)
+                    {
+                        // 被别的窗口盖住了就马上补一次置顶，不用等下一个周期
+                        Point center = new Point(_bounds.X + _bounds.Width / 2, _bounds.Y + _bounds.Height / 2);
+                        if (Native.WindowCoveredAt(Handle, center))
+                        {
+                            _lastTopmost = now;
+                            Native.TopMostNoActivate(Handle);
+                            _coveredTicks++;
+                            if (_coveredTicks == 30 && !_coveredWarned)
+                            {
+                                _coveredWarned = true;
+                                Log.Info("警告：轮盘持续被前台全屏窗口遮挡（游戏可能使用独占全屏，或不允许其他窗口置顶）；建议把游戏改成无边框窗口模式");
+                            }
+                        }
+                        else
+                        {
+                            _coveredTicks = 0;
+                        }
+                    }
+                }
+
                 PollMouse(now);
                 if (FakeRaw && _relative && (now - _openedAt).TotalMilliseconds < 5000) OnRawMouse(5, -7);
                 if (_capturing && _relative) SyncCapturedCursor();

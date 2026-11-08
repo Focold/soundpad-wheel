@@ -58,6 +58,13 @@
   - 用 Z 序枚举确认轮盘窗口（TOPMOST）位于游戏窗口之上
 - 未验证：真实游戏内的接管手感（测试机无法稳定注入鼠标事件）、与各反作弊/独占全屏游戏的兼容性
 
+## v1.2.2 增补（无边框全屏游戏看得见轮盘）
+
+- 问题：无边框全屏游戏（典型是 Java 版《我的世界》）会把自身设为置顶，轮盘虽然带 `WS_EX_TOPMOST`，但句柄创建更早、打开时又不重新置顶，于是被压在游戏下面（"打开了但看不见"）
+- 改动：`src/Native.cs` 新增 `TopMostNoActivate`（`SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOSIZE)`）、`WindowCoveredAt`（沿 `GW_HWNDPREV` 检查上层窗口是否盖住轮盘中心）、`ForegroundFullscreen`；`src/WheelWindow.cs` 打开时置顶一次、每 250ms 重新置顶、被遮挡时立即补一次，连续约 3 秒被遮挡写一条告警；`src/Toast.cs` 同样周期性置顶；`src/Program.cs` 支持 `SOUNDWHEEL_TOPMOST_MS`
+- 验证：`tools/FakeGame.cs`（编译为 `dist/SimGame.exe`）模拟"无边框全屏 + 每 1200ms 抢回置顶"的游戏窗口，用屏幕像素对照：关闭重试时轮盘中心 = 游戏绿色（被盖住，复现缺陷），开启重试时轮盘中心 = 轮盘深色、轮盘外 = 游戏绿色（可见，修复生效）；截图 `testdataT/B1_crop.png` 目视确认
+- 未验证：真实 Java 版 MC / GLFW 全屏下的表现、与其它全屏游戏的实际叠加兼容性
+
 ## 验证情况（截至 v1.0.0）
 
 已在 Windows 11 + 150% DPI 的实机上验证：

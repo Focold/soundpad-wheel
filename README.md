@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![AI Generated](https://img.shields.io/badge/content-AI--generated-8A2BE2.svg)](AI-DISCLOSURE.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey.svg)](#系统要求)
-[![Version](https://img.shields.io/badge/version-1.2.1-success.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.2.2-success.svg)](CHANGELOG.md)
 [![Build](https://github.com/Focold/soundpad-wheel/actions/workflows/build.yml/badge.svg)](https://github.com/Focold/soundpad-wheel/actions/workflows/build.yml)
 
 > [!IMPORTANT]
@@ -104,7 +104,8 @@ SoundWheel 是一个独立的小程序（单文件 exe，无需安装运行时�
 
 1. 接管依赖系统的低级鼠标钩子。如果前台的游戏 **以管理员身份运行**（权限比本程序高），钩子收不到事件，程序会退化成"跟着真实光标走"，日志里会写一行告警；此时把游戏改成窗口化 / 无边框，或让游戏与本程序权限一致（都不提权）即可。
 2. 少数游戏直接读原始输入来转视角，即使系统消息被拦下也可能跟着转；这种情况建议用 **按住模式**（按住热键 → 甩到目标扇区 → 松开），轮盘关闭后视角才恢复。
-3. **独占全屏**（Exclusive Fullscreen）下，系统不允许任何普通窗口盖在游戏画面上，轮盘会看不到；请把游戏改成 **窗口化** 或 **无边框全屏** —— 这也是所有覆盖层工具（Discord、Steam、OBS）的共同前提。
+3. **窗口化 / 无边框全屏**（Borderless）游戏会把自己压在其他窗口上面。从 1.2.2 起，轮盘打开时会把窗口顶到最前，并在打开期间周期性重新置顶（默认每 250ms），被盖住时立即补一次，所以无边框全屏也能稳定显示。
+4. **独占全屏**（Exclusive Fullscreen）是另一回事：系统不允许任何普通窗口画在游戏画面上，轮盘依然看不到；请把游戏改成 **窗口化** 或 **无边框全屏** —— 这也是所有覆盖层工具（Discord、Steam、OBS）的共同前提。此时日志里会出现"轮盘持续被前台全屏窗口遮挡"的告警。
 
 **关于"自动切换点按模式"**：程序靠轮询按键状态判断"松开了没有"。极少数情况下（远程桌面、独占全屏、被反作弊/输入法/其他输入软件抢占等情况）读不到按键状态，此时轮盘打开约 2.5 秒后会自动切换到点按模式，中心提示会从"松开播放"变成"点击播放"，此时用鼠标左键点选即可 —— 功能不会被卡死。
 
@@ -155,6 +156,8 @@ SoundWheel.exe [--data <目录>] [--preview [秒]] [--settings] [--debug-keys] [
 | `--data <目录>` | 指定数据目录（优先级高于 `SOUNDWHEEL_DATA`） |
 | `--debug-keys` | 把按键原始状态写进日志（排查"按住/松开"不生效时使用） |
 | `--debug-mouse` | 把每条原始鼠标位移、跟踪模式切换写进日志（排查 FPS 里指针不动时使用） |
+
+环境变量 `SOUNDWHEEL_TOPMOST_MS`：轮盘打开期间重新置顶的间隔（毫秒，默认 `250`；`0` 表示只在打开时置顶一次、不做周期重试）。
 
 单实例：同一时间只允许一个 SoundWheel 进程，重复启动会提示"SoundWheel 已经在运行，请在系统托盘中查看。"
 
@@ -251,6 +254,11 @@ start dist\SoundWheel.exe --data examples\testdata
 - 看 `soundwheel.log` 里是否有 `播放失败` / `连接` 相关记录
 - 语音软件里听不到 → 检查本程序是否勾选"发送到麦克风"，以及 Soundpad 的麦克风设备设置
 
+**在游戏里能看到鼠标动了，但轮盘根本不出现 / 被游戏挡住**
+- 1.2.2 起会自动把轮盘重新提到最前面；如果仍然看不到，看 `soundwheel.log` 里是否有 `轮盘已置顶 前台全屏=...` 与 `轮盘持续被前台全屏窗口遮挡` 的告警
+- 这条告警基本说明游戏用的是 **独占全屏**：改成 **窗口化** 或 **无边框全屏**（这也是 Discord / Steam / OBS 覆盖层的共同前提）
+- 想手动控制置顶频率：环境变量 `SOUNDWHEEL_TOPMOST_MS`（默认 250 毫秒，`0` 关闭周期性置顶）
+
 **在游戏里轮盘能打开，但指针不动 / 选不中**
 - 打开 设置 → **游戏与鼠标** → 点 **检测鼠标状态**，看光标是否被隐藏或锁定
 - 跟踪方式改成 **相对位移** 再试；仍不动的话，把游戏改成窗口化 / 无边框模式
@@ -271,7 +279,8 @@ start dist\SoundWheel.exe --data examples\testdata
 - 只使用 Soundpad **All sounds** 分类的序号（这是 Remote Control API 的索引定义），不支持直接引用其他分类
 - 内圈最多 12 格、外圈最多 16 格
 - 接管鼠标依赖 `WH_MOUSE_LL`：前台程序权限更高（例如游戏以管理员运行）时钩子收不到事件，会退化成跟随真实光标
-- 个别游戏直接读原始输入转视角，钩子拦不住；独占全屏下轮盘无法显示在游戏画面上
+- 个别游戏直接读原始输入转视角，钩子拦不住
+- 独占全屏（Exclusive Fullscreen）下轮盘无法显示在游戏画面上，请改用窗口化 / 无边框全屏（程序会自动周期性置顶，兼容无边框全屏游戏）
 - 指针位置按钩子事件 / 光标位置推算，极端卡顿时可能有 1–2 帧延迟
 - 同一时间只有一个配置（没有多套轮盘/多套配置文件）
 - 只做"播放/停止"，不修改 Soundpad 本身、不做音频编辑

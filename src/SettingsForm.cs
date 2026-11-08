@@ -563,7 +563,10 @@ namespace SoundWheel
             _mouseProbe.Location = new Point(16, 74);
             _mouseProbe.Size = new Size(418, 196);
             _mouseProbe.ForeColor = Color.FromArgb(80, 88, 104);
-            _mouseProbe.Text = "在目标程序（例如游戏）里打开轮盘后点这里，可以查看系统光标是否被隐藏或锁定。";
+            _mouseProbe.Text = "在目标程序（例如游戏）里打开轮盘后点这里，可以查看系统光标是否被隐藏或锁定。" + Environment.NewLine +
+                Environment.NewLine +
+                "如果在游戏里看不到轮盘：程序会自动把轮盘重新提到最前面；仍然看不到时，" +
+                "多半是游戏用了独占全屏，请改成无边框 / 窗口化全屏。";
 
             probeBox.Controls.Add(probe);
             probeBox.Controls.Add(_mouseProbe);
@@ -598,7 +601,10 @@ namespace SoundWheel
                 + Environment.NewLine
                 + "锁定状态：" + (clipped ? "已锁定到屏幕中心（建议用相对位移）" : "未锁定")
                 + Environment.NewLine
-                + "数据目录：" + AppPaths.DataDir;
+                + "数据目录：" + AppPaths.DataDir
+                + Environment.NewLine
+                + "轮盘置顶：每 " + WheelWindow.TopmostIntervalMs + " ms 重新置顶一次" +
+                (WheelWindow.TopmostIntervalMs == 0 ? "（已关闭）" : "");
         }
 
         private void BuildAbout(TabPage page)
@@ -606,7 +612,7 @@ namespace SoundWheel
             Label about = new Label();
             about.Location = new Point(24, 24);
             about.Size = new Size(920, 500);
-            about.Text = "SoundWheel 1.2.1" + Environment.NewLine + Environment.NewLine +
+            about.Text = "SoundWheel 1.2.2" + Environment.NewLine + Environment.NewLine +
                 "Soundpad 音效轮盘：按住热键在鼠标位置弹出轮盘，移动鼠标选择音效，松开即播放。" +
                 Environment.NewLine + Environment.NewLine +
                 "本程序通过 Soundpad 官方远程控制接口（命名管道）工作，不修改 Soundpad 安装文件。" +

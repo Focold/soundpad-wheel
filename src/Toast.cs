@@ -14,6 +14,7 @@ namespace SoundWheel
         private float _opacity;
         private int _phase;
         private DateTime _phaseAt;
+        private DateTime _lastTop = DateTime.MinValue;
 
         private Toast(string text, Color accent)
         {
@@ -81,6 +82,8 @@ namespace SoundWheel
                 t.Location = new Point(x, y);
                 _current = t;
                 t.Show();
+                Native.TopMostNoActivate(t.Handle);
+                t._lastTop = DateTime.UtcNow;
                 t._phase = 1;
                 t._phaseAt = DateTime.UtcNow;
                 t._timer.Start();
@@ -93,6 +96,12 @@ namespace SoundWheel
 
         private void OnTick(object sender, EventArgs e)
         {
+            // 无边框全屏游戏会抢 topmost，提示窗也要周期性顶上去
+            if ((DateTime.UtcNow - _lastTop).TotalMilliseconds >= 150)
+            {
+                _lastTop = DateTime.UtcNow;
+                Native.TopMostNoActivate(Handle);
+            }
             double elapsed = (DateTime.UtcNow - _phaseAt).TotalMilliseconds;
             if (_phase == 1)
             {

@@ -30,6 +30,16 @@ namespace SoundWheel
         public const int ULW_ALPHA = 0x00000002;
         public const byte AC_SRC_ALPHA = 1;
 
+        // SetWindowPos：把窗口重新顶到 topmost 组最前面且不激活，用于盖住无边框全屏游戏
+        public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+        public const uint SWP_NOSIZE = 0x0001;
+        public const uint SWP_NOMOVE = 0x0002;
+        public const uint SWP_NOACTIVATE = 0x0010;
+        public const uint SWP_SHOWWINDOW = 0x0040;
+        public const uint SWP_NOOWNERZORDER = 0x0200;
+        public const uint MONITOR_DEFAULTTONEAREST = 2;
+        public const uint GW_HWNDPREV = 3;
+
         public const uint MOD_ALT = 0x0001;
         public const uint MOD_CONTROL = 0x0002;
         public const uint MOD_SHIFT = 0x0004;
@@ -61,6 +71,15 @@ namespace SoundWheel
             public int Bottom;
             public int Width { get { return Right - Left; } }
             public int Height { get { return Bottom - Top; } }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MONITORINFO
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public uint dwFlags;
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -138,6 +157,30 @@ namespace SoundWheel
 
         [DllImport("user32.dll")]
         public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        [DllImport("user32.dll")]
+        public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+        [DllImport("user32.dll")]
+        public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
+        [DllImport("user32.dll")]
+        public static extern bool IsWindowVisible(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
         [DllImport("user32.dll")]
         public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
@@ -239,6 +282,76 @@ namespace SoundWheel
             }
             catch (Exception) { }
             return 1f;
+        }
+
+        // 重新置顶但不抢焦点：无边框全屏游戏通常把自己设成 topmost，它被激活后就会盖到我们上面，
+        // 所以轮盘打开期间要周期性调用一次，保证始终压在游戏画面之上
+        public static void TopMostNoActivate(IntPtr hwnd)
+        {
+            try
+            {
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+            }
+            catch (Exception) { }
+        }
+
+        // 轮盘是不是被压在别的窗口下面了（只看 topmost 组里排在我们前面的几个窗口）
+        public static bool WindowCoveredAt(IntPtr hwnd, Point pt)
+        {
+            try
+            {
+                uint myPid = (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
+                IntPtr cur = GetWindow(hwnd, GW_HWNDPREV);
+                for (int i = 0; i < 6 && cur != IntPtr.Zero; i++)
+                {
+                    if (IsWindowVisible(cur))
+                    {
+                        uint pid;
+                        GetWindowThreadProcessId(cur, out pid);
+                        if (pid != myPid)
+                        {
+                            RECT r;
+                            if (GetWindowRect(cur, out r) && r.Width > 0 && r.Height > 0
+                                && pt.X >= r.Left && pt.X < r.Right && pt.Y >= r.Top && pt.Y < r.Bottom)
+                                return true;
+                        }
+                    }
+                    cur = GetWindow(cur, GW_HWNDPREV);
+                }
+            }
+            catch (Exception) { }
+            return false;
+        }
+
+        // 前台窗口是不是把整个显示器都盖住了（全屏 / 无边框全屏），只用于日志与提示
+        public static bool ForegroundFullscreen(out string info)
+        {
+            info = "";
+            try
+            {
+                IntPtr fg = GetForegroundWindow();
+                if (fg == IntPtr.Zero) return false;
+                RECT wr;
+                if (!GetWindowRect(fg, out wr)) return false;
+                IntPtr mon = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST);
+                if (mon == IntPtr.Zero) return false;
+                MONITORINFO mi = new MONITORINFO();
+                mi.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+                if (!GetMonitorInfo(mon, ref mi)) return false;
+                bool covers = wr.Left <= mi.rcMonitor.Left + 1 && wr.Top <= mi.rcMonitor.Top + 1
+                    && wr.Right >= mi.rcMonitor.Right - 1 && wr.Bottom >= mi.rcMonitor.Bottom - 1;
+                System.Text.StringBuilder sb = new System.Text.StringBuilder(256);
+                GetClassName(fg, sb, sb.Capacity);
+                info = "fg=" + fg + " class=" + sb.ToString()
+                    + " rect=" + wr.Left + "," + wr.Top + " " + wr.Width + "x" + wr.Height
+                    + " monitor=" + mi.rcMonitor.Width + "x" + mi.rcMonitor.Height;
+                return covers;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         public static void ShowNoActivate(IntPtr hwnd)

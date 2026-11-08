@@ -32,6 +32,10 @@ namespace SoundWheel
             WheelWindow.KeyDebug = debugKeys || Environment.GetEnvironmentVariable("SOUNDWHEEL_DEBUG_KEYS") == "1";
             WheelWindow.MouseDebug = debugMouse || Environment.GetEnvironmentVariable("SOUNDWHEEL_DEBUG_MOUSE") == "1";
             WheelWindow.FakeRaw = Environment.GetEnvironmentVariable("SOUNDWHEEL_FAKE_RAW") == "1";
+            int topmostMs;
+            if (!int.TryParse(Environment.GetEnvironmentVariable("SOUNDWHEEL_TOPMOST_MS"), out topmostMs)) topmostMs = 250;
+            if (topmostMs < 0) topmostMs = 0;
+            WheelWindow.TopmostIntervalMs = topmostMs;
 
             Log.FilePath = AppPaths.LogFile;
             Log.Info("启动 " + string.Join(" ", args));

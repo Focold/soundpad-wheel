@@ -95,8 +95,12 @@ Trade-offs:
    game windowed/borderless or at the same privilege level.
 2. A few games read raw input directly; the hook cannot stop those from turning a little — prefer the **hold mode**
    (hold hotkey → flick to the sector → release).
-3. Under **exclusive fullscreen** Windows does not allow any ordinary window on top of the game, so the wheel is invisible.
-   Use **windowed** or **borderless fullscreen** — the same prerequisite as every overlay tool (Discord, Steam, OBS).
+3. **Windowed / borderless fullscreen** games push themselves above other windows. Since 1.2.2 the wheel re-asserts
+   itself to the top of the topmost band when it opens and periodically while it is up (every 250 ms by default), plus
+   immediately whenever something covers it, so borderless fullscreen games work reliably.
+4. **Exclusive fullscreen** is a different story: Windows does not allow any ordinary window on top of the game, so the
+   wheel is still invisible. Use **windowed** or **borderless fullscreen** — the same prerequisite as every overlay tool
+   (Discord, Steam, OBS). The log then shows "轮盘持续被前台全屏窗口遮挡".
 
 ---
 
@@ -156,6 +160,9 @@ SoundWheel.exe [--data <dir>] [--preview [seconds]] [--settings] [--debug-keys] 
 | `--debug-keys` | Log raw key states (diagnose hold/release problems) |
 | `--debug-mouse` | Log every raw mouse delta and tracking-mode switch (diagnose a frozen pointer in games) |
 
+Environment variable `SOUNDWHEEL_TOPMOST_MS`: interval for re-asserting the wheel on top (milliseconds, default `250`;
+`0` means "raise once when opening, no periodic retry").
+
 Only one instance may run at a time.
 
 ---
@@ -198,6 +205,10 @@ A ready-made example configuration is included in `examples\testdata`.
   click-to-play, so it never gets stuck.
 - **Nothing audible** — is Soundpad running? Refresh the sound list; check `soundwheel.log`;
   check the "send to microphone" option and Soundpad's own device settings.
+- **Wheel never appears in a game / is covered by the game** — since 1.2.2 the wheel is raised to the top when it
+  opens and re-raised periodically; check `soundwheel.log` for `轮盘已置顶 前台全屏=...` and
+  `轮盘持续被前台全屏窗口遮挡`. The latter means the game uses **exclusive fullscreen**: switch it to windowed or
+  borderless fullscreen. Tune the retry rate with `SOUNDWHEEL_TOPMOST_MS` (`0` disables the periodic retry).
 - **Wrong sound plays** — the order changed inside Soundpad; refresh the list (matching is title-first).
 - **Wheel opens in a game but the pointer will not move** — Settings → **Game & mouse** → **检测鼠标状态** to see
   whether the cursor is hidden or clipped; switch tracking to **Relative**; try windowed/borderless mode; run with
@@ -213,7 +224,9 @@ A ready-made example configuration is included in `examples\testdata`.
 - Max 12 inner + 16 outer slots, one configuration at a time
 - Mouse capture relies on `WH_MOUSE_LL`; a higher-integrity foreground app (elevated game) means the hook gets no
   events and the app degrades to following the real cursor
-- A few games read raw input directly and still turn; under exclusive fullscreen the wheel cannot be shown at all
+- A few games read raw input directly and still turn
+- Under exclusive fullscreen the wheel cannot be shown at all; use windowed / borderless fullscreen (the wheel does
+  re-assert itself on top, which covers borderless fullscreen games)
 - The pointer is derived from hook events / cursor position, so a badly stuttering game may lag it by a frame or two
 - Playback/stop only — it never edits audio or Soundpad's own data
 - UI is Chinese-only; tested on Windows 11 at 150 % DPI
