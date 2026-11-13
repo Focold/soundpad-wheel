@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![AI Generated](https://img.shields.io/badge/content-AI--generated-8A2BE2.svg)](AI-DISCLOSURE.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey.svg)](#系统要求)
-[![Version](https://img.shields.io/badge/version-1.2.2-success.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.0.0-success.svg)](CHANGELOG.md)
 [![Build](https://github.com/Focold/soundpad-wheel/actions/workflows/build.yml/badge.svg)](https://github.com/Focold/soundpad-wheel/actions/workflows/build.yml)
 
 > [!IMPORTANT]
@@ -33,7 +33,10 @@ SoundWheel 是一个独立的小程序（单文件 exe，无需安装运行时�
 - **悬停反馈**：高亮所在扇区，中心显示音效名称，指针位置有小白点
 - **播放目标可配**：只发麦克风 / 只走扬声器 / 两者同时（Soundpad 侧需要在"麦克风"设备上正常工作）
 - **托盘常驻**：托盘菜单可打开轮盘、改设置、刷新列表、打开数据目录、退出
-- **外观可调**：整体大小 70%–160%、主题色、内外圈格数、开关打开/关闭动画
+- **外观可调**：整体大小 70%–160%、字体缩放 85%–135%、内外圈格数、开关打开/关闭动画
+- **深色 / 浅色主题**：跟随系统 / 强制深色 / 强制浅色，12 种预设主题色 + 任意自定义颜色（轮盘、设置窗口、托盘菜单同步换色）
+- **拖拽装配**：设置里的「轮盘」页左边是轮盘预览、右边是音效库，把音效拖到扇区即可装配；也可以先点扇区再双击音效
+- **安装向导**（2.0 新增）：中文 / English 双语、免管理员装到 `%LOCALAPPDATA%\SoundWheel`、可从 GitHub 检查最新版并更新、可重新安装或卸载
 - **登录时自动启动**（写 HKCU 的 Run 项，不需要管理员权限）
 - **播放提示条**（可选）：播放时在光标下方弹出一个小药丸提示
 
@@ -54,14 +57,43 @@ SoundWheel 是一个独立的小程序（单文件 exe，无需安装运行时�
 
 ## 快速开始
 
-1. 双击 `SoundWheel.exe`（从 [Releases](https://github.com/Focold/soundpad-wheel/releases) 下载，或自行 `build.cmd` 后的 `dist\SoundWheel.exe`）；首次启动会在托盘显示一个轮盘小图标
-2. 右键托盘图标 → **设置…**
-3. 切到 **轮盘布局** 页 → 点 **刷新音效列表** → 给内圈 / 外圈逐格选音效 → **保存**
+1. 从 [Releases](https://github.com/Focold/soundpad-wheel/releases) 下载 **`SoundWheelSetup.exe`** 并运行，跟着向导点"安装"（详见下面的[安装与更新](#安装与更新)）；也可以下载单文件 `SoundWheel.exe` 直接运行
+2. 首次启动会在托盘显示一个轮盘小图标，右键 → **设置…**
+3. 切到 **轮盘** 页 → 点 **刷新音效列表** → 把右边的音效**拖到**左边轮盘的扇区上（或先点扇区、再双击音效）→ **保存**
 4. 回到游戏或语音软件，按住 `Ctrl + Alt + W`，鼠标移到想要的扇区，松开
 
-第一次运行还没有配置时，直接把想要的声音先分配好即可；**音效库** 页可以看到从 Soundpad 读到的完整列表（行首数字就是 Soundpad 的 `All sounds` 序号）。
-
 ![设置界面](assets/settings.png)
+
+---
+
+## 安装与更新
+
+**安装**：运行 `SoundWheelSetup.exe`，向导会自动读取电脑上已安装的版本和 GitHub 上的最新版本：
+
+- 免管理员权限，默认装到 `%LOCALAPPDATA%\SoundWheel`（可用 `--dir <目录>` 指定别处）
+- 可选 **安装完成后启动**、**创建桌面快捷方式**；开始菜单快捷方式总会创建
+- 已安装且已是最新版本时，向导会先提示"当前已是最新版本 X。是否重新安装？"，确认后才覆盖安装
+- 右上角可随时在 **中文 / English** 之间切换
+- 卸载：Windows「设置 → 应用」里的 SoundWheel，或 `SoundWheelSetup.exe --uninstall`；卸载时可勾选"同时删除配置与日志"
+
+**更新**（三条路径，都从 [GitHub Releases](https://github.com/Focold/soundpad-wheel/releases) 获取）：
+
+| 入口 | 行为 |
+| --- | --- |
+| 安装向导 | 打开时自动检查最新版本；发现新版时主按钮变成 **下载并更新**，下载 `SoundWheelSetup.exe` 后静默安装到同一目录 |
+| 设置 → 关于 | **检查更新** / **下载并安装** 按钮 |
+| 程序启动时（静默） | 后台检查一次，有新版本时弹托盘气泡提示，点击打开下载页；设 `SOUNDWHEEL_NO_UPDATE_CHECK=1` 可关闭 |
+
+安装/更新都会**自动关闭正在运行的旧版本**（托盘图标消失是正常的），并且**保留 `%APPDATA%\SoundWheel` 里的配置**。
+
+![安装向导](assets/setup.png)
+
+**静默命令行**（给脚本或批量部署用）：
+
+```cmd
+SoundWheelSetup.exe /S --dir "%LOCALAPPDATA%\SoundWheel"
+SoundWheelSetup.exe /S --uninstall
+```
 
 ---
 
@@ -113,15 +145,19 @@ SoundWheel 是一个独立的小程序（单文件 exe，无需安装运行时�
 
 ## 设置界面
 
+设置窗口是**无边框圆角**窗口：左侧是导航（常规 / 轮盘 / 主题 / 游戏与鼠标 / 关于），右侧是内容卡片，底部固定 **预览轮盘**、**保存**、**取消**；标题栏可拖动，Esc 关闭。
+
 | 页 | 内容 |
 | --- | --- |
-| **常规** | 快捷键（点输入框后按下组合键，Backspace 清除）、点按模式、播放目标（麦克风 / 扬声器 / 播放提示）、外观与布局（整体大小、内圈格数、外圈格数、主题色、动画）、启动与数据（登录时自动启动、配置文件路径）、使用说明 |
-| **轮盘布局** | 刷新音效列表；内圈 1–12、外圈 0–16 逐格下拉分配（显示为 `序号 · 名称`，`（空）` 表示不分配） |
-| **音效库** | 只读列表，确认 Soundpad 里读到了什么（编号 = `All sounds` 顺序 = `DoPlaySound` 的索引） |
+| **常规** | 快捷键（点输入框后按下组合键，Backspace 清除）、点按模式、播放目标（麦克风 / 扬声器 / 播放提示）、轮盘大小、内外圈格数、动画开关、登录时自动启动、配置路径、使用说明 |
+| **轮盘** | 左边是**可交互的轮盘预览**，右边是**音效库**：把音效从库里**拖到**扇区即可装配；也可以先点扇区选中、再双击音效。右键扇区清除该槽位，中心圆显示当前指向的音效 |
+| **主题** | 外观模式（跟随系统 / 深色 / 浅色）、12 种预设主题色 + 自定义颜色、界面字体缩放 85%–135%，右侧实时预览轮盘配色 |
 | **游戏与鼠标** | 是否接管鼠标（默认开）、鼠标跟踪方式（自动判断 / 绝对坐标 / 相对位移）、灵敏度、鼠标状态自检、FPS 使用说明 |
-| **关于** | 版本与说明 |
+| **关于** | 版本、**检查更新 / 下载并安装**、数据目录、仓库链接 |
 
-底部固定栏：**预览轮盘**（不用热键、直接在屏幕中心打开轮盘 3 秒）、**保存**、**取消**。
+主题色会同时作用于轮盘、设置窗口和托盘菜单；保存后立即生效（下次打开轮盘就是新配色）。
+
+![轮盘页：左边轮盘、右边音效库](assets/wheel-page.png)
 
 ---
 
@@ -157,7 +193,11 @@ SoundWheel.exe [--data <目录>] [--preview [秒]] [--settings] [--debug-keys] [
 | `--debug-keys` | 把按键原始状态写进日志（排查"按住/松开"不生效时使用） |
 | `--debug-mouse` | 把每条原始鼠标位移、跟踪模式切换写进日志（排查 FPS 里指针不动时使用） |
 
-环境变量 `SOUNDWHEEL_TOPMOST_MS`：轮盘打开期间重新置顶的间隔（毫秒，默认 `250`；`0` 表示只在打开时置顶一次、不做周期重试）。
+环境变量：
+
+- `SOUNDWHEEL_TOPMOST_MS`：轮盘打开期间重新置顶的间隔（毫秒，默认 `250`；`0` 表示只在打开时置顶一次、不做周期重试）
+- `SOUNDWHEEL_NO_UPDATE_CHECK=1`：关闭启动时的静默更新检查
+- `SOUNDWHEEL_DEBUG_MOUSE=1` / `SOUNDWHEEL_DEBUG_KEYS=1`：等价于对应的命令行开关
 
 单实例：同一时间只允许一个 SoundWheel 进程，重复启动会提示"SoundWheel 已经在运行，请在系统托盘中查看。"
 
@@ -165,9 +205,13 @@ SoundWheel.exe [--data <目录>] [--preview [秒]] [--settings] [--debug-keys] [
 
 ## 托盘菜单
 
-**打开轮盘** · **设置…** · **刷新音效列表** · **打开数据文件夹** · **退出**
+2.0 起托盘菜单是**自绘的圆角深色 / 浅色菜单**，会跟随主题换色，并在顶部显示版本、Soundpad 连接状态与当前快捷键：
+
+**打开轮盘** · **设置…** · **主题**（跟随系统 / 深色 / 浅色 + 12 个主题色） · **刷新音效列表** · **打开数据文件夹** · **检查更新…** · **退出**
 
 （双击托盘图标 = 打开轮盘）
+
+![托盘菜单](assets/tray.png)
 
 ---
 
@@ -182,6 +226,7 @@ build.cmd
 输出：
 
 - `dist\SoundWheel.exe` —— 主程序（带图标，单文件，无外部依赖）
+- `dist\SoundWheelSetup.exe` —— 安装向导（把主程序作为资源内嵌，单文件；中英双语、可检查更新 / 卸载）
 - `dist\MockSoundpad.exe` —— 开发用的假 Soundpad（见下）
 
 等价 PowerShell 脚本 `build.ps1` 也可以，但需要允许脚本执行：
@@ -198,7 +243,13 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 | `src\Program.cs` | 入口、DPI 感知、命令行解析、单实例、预览/设置模式 |
 | `src\App.cs` | 托盘、热键注册、播放调度、Soundpad 重连、开机自启、退出清理 |
 | `src\WheelWindow.cs` | 轮盘窗口：分层窗口绘制、扇区几何、命中测试、动画、提交逻辑 |
-| `src\SettingsForm.cs` | 设置窗口（五页 + 预览 + 保存） |
+| `src\SettingsForm.cs` | 设置窗口：圆角无边框外壳、左侧导航、五个页面、实时主题切换 |
+| `src\WheelPreview.cs` | 设置里的可交互轮盘预览：点击选槽、右键清除、拖放装配 |
+| `src\Theme.cs` | 深色 / 浅色配色与 12 种主题色、系统主题检测 |
+| `src\Ui.cs` | 自绘控件：圆角按钮 / 卡片 / 复选框 / 色块 / 分段控件 / 滑杆 / 数字框 |
+| `src\TrayMenu.cs` | 自绘托盘菜单（圆角、主题跟随、主题子菜单、检查更新） |
+| `src\Update.cs` | GitHub Releases 版本检查与下载 |
+| `installer\Setup.cs` / `installer\SetupUi.cs` | 安装 / 卸载逻辑、快捷方式与注册表登记、双语向导界面 |
 | `src\MouseHook.cs` | 低级鼠标钩子（`WH_MOUSE_LL`）：轮盘打开期间接管鼠标，吞掉移动/点击/滚轮 |
 | `src\RawMouse.cs` | 接收 Raw Input 的隐藏窗口（相对位移输入的备用来源） |
 | `src\SoundpadClient.cs` | 命名管道客户端、`GetSoundlist` / `DoPlaySound` 命令、音效缓存 |
@@ -283,6 +334,8 @@ start dist\SoundWheel.exe --data examples\testdata
 - 独占全屏（Exclusive Fullscreen）下轮盘无法显示在游戏画面上，请改用窗口化 / 无边框全屏（程序会自动周期性置顶，兼容无边框全屏游戏）
 - 指针位置按钩子事件 / 光标位置推算，极端卡顿时可能有 1–2 帧延迟
 - 同一时间只有一个配置（没有多套轮盘/多套配置文件）
+- 安装向导不做代码签名，首次运行 Windows SmartScreen 可能提示"更多信息 → 仍要运行"
+- 自动更新依赖 GitHub Releases，需要能访问 github.com 与 api.github.com
 - 只做"播放/停止"，不修改 Soundpad 本身、不做音频编辑
 - 仅在 Windows 10/11 上测试
 
@@ -292,12 +345,13 @@ start dist\SoundWheel.exe --data examples\testdata
 
 ```
 SoundWheel/
-├─ src/            主程序源码（14 个 .cs，C# 5）
+├─ src/            主程序源码（20 个 .cs，C# 5）
+├─ installer/      安装 / 卸载向导（Setup.cs + SetupUi.cs，编译为 SoundWheelSetup.exe）
 ├─ tools/          MockSoundpad 假服务器、图标生成器、开发期探针
 ├─ assets/         图标与文档截图
 ├─ examples/       示例数据目录（可直接 --data 使用）
 ├─ .github/        issue 模板、PR 模板、CI 工作流
-├─ build.cmd       一键构建（系统自带 csc，无需 SDK）
+├─ build.cmd       一键构建（系统自带 csc，无需 SDK；同时产出 Setup）
 ├─ build.ps1       同上（PowerShell 版）
 └─ README.md
 ```

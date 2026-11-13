@@ -49,14 +49,17 @@ namespace SoundWheel
         private readonly SoundpadClient _client = new SoundpadClient();
         private readonly WheelWindow _wheel;
         private readonly NotifyIcon _tray;
+        private readonly TrayMenu _menu;
         private readonly HotkeyWindow _hotkeyWindow;
         private bool _hotkeyRegistered;
         private bool _shutdown;
         private Icon _icon;
+        private UpdateInfo _pendingUpdate;
 
         public App()
         {
             _config = AppConfig.Load(AppPaths.ConfigFile);
+            Theme.Current = Theme.Build(_config.ThemeMode, _config.Accent);
             _client.Sounds = SoundCache.Load(AppPaths.SoundsFile);
 
             _wheel = new WheelWindow(_config);
@@ -71,47 +74,156 @@ namespace SoundWheel
             _tray.Icon = _icon;
             _tray.Visible = true;
             _tray.DoubleClick += delegate { OpenWheel(false, false, 0); };
-            _tray.ContextMenuStrip = BuildMenu();
+            _tray.BalloonTipClicked += delegate
+            {
+                UpdateInfo info = _pendingUpdate;
+                if (info == null) return;
+                try { System.Diagnostics.Process.Start(info.PageUrl); }
+                catch (Exception ex) { Log.Error("打开更新页面失败", ex); }
+            };
+            _menu = new TrayMenu(this);
+            _tray.ContextMenuStrip = _menu;
+
+            string trayPreview = Environment.GetEnvironmentVariable("SOUNDWHEEL_TRAY_PREVIEW");
+            if (!string.IsNullOrEmpty(trayPreview))
+            {
+                string[] parts = trayPreview.Split(',');
+                int px = 400;
+                int py = 240;
+                if (parts.Length == 2)
+                {
+                    int.TryParse(parts[0], out px);
+                    int.TryParse(parts[1], out py);
+                }
+                System.Windows.Forms.Timer previewTimer = new System.Windows.Forms.Timer();
+                previewTimer.Interval = 600;
+                previewTimer.Tick += delegate
+                {
+                    previewTimer.Stop();
+                    previewTimer.Dispose();
+                    try { _menu.Show(new Point(px, py)); }
+                    catch (Exception ex) { Log.Error("托盘预览失败", ex); }
+                };
+                previewTimer.Start();
+            }
 
             RegisterHotkey();
             if (_config.AutoStart) ApplyAutoStart();
+            CheckUpdatesSilently();
             Log.Info("App 启动，音效缓存 " + _client.Sounds.Length + " 条");
             Log.Info("环境 " + Native.EnvironmentInfo());
 
         }
 
-        private ContextMenuStrip BuildMenu()
+        internal AppConfig Config { get { return _config; } }
+
+        internal string TrayStatusText
         {
-            ContextMenuStrip menu = new ContextMenuStrip();
-            menu.Font = new Font("Microsoft YaHei UI", 9.5f, FontStyle.Regular, GraphicsUnit.Point);
-
-            ToolStripMenuItem open = new ToolStripMenuItem("打开轮盘");
-            open.Click += delegate { OpenWheel(false, false, 0); };
-
-            ToolStripMenuItem settings = new ToolStripMenuItem("设置…");
-            settings.Click += OnSettings;
-
-            ToolStripMenuItem refresh = new ToolStripMenuItem("刷新音效列表");
-            refresh.Click += OnRefresh;
-
-            ToolStripMenuItem folder = new ToolStripMenuItem("打开数据文件夹");
-            folder.Click += delegate
+            get
             {
-                try { System.Diagnostics.Process.Start("explorer.exe", "\"" + AppPaths.DataDir + "\""); }
-                catch (Exception ex) { Log.Error("打开数据文件夹失败", ex); }
-            };
+                int count = _client.Sounds == null ? 0 : _client.Sounds.Length;
+                return _client.IsConnected
+                    ? "Soundpad 已连接 · " + count + " 个音效"
+                    : "Soundpad 未连接 · 已缓存 " + count + " 个音效";
+            }
+        }
 
-            ToolStripMenuItem exit = new ToolStripMenuItem("退出");
-            exit.Click += delegate { Shutdown(); ExitThread(); };
+        internal string TrayHotkeyText { get { return _config.Hotkey.Display; } }
 
-            menu.Items.Add(open);
-            menu.Items.Add(settings);
-            menu.Items.Add(refresh);
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add(folder);
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add(exit);
-            return menu;
+        internal void TrayOpen() { OpenWheel(false, false, 0); }
+
+        internal void TraySettings() { OnSettings(this, EventArgs.Empty); }
+
+        internal void TrayRefresh() { OnRefresh(this, EventArgs.Empty); }
+
+        internal void TrayOpenDataFolder()
+        {
+            try { System.Diagnostics.Process.Start("explorer.exe", "\"" + AppPaths.DataDir + "\""); }
+            catch (Exception ex) { Log.Error("打开数据文件夹失败", ex); }
+        }
+
+        internal void TrayThemeMode(int mode)
+        {
+            if (mode < 0 || mode > 2) return;
+            _config.ThemeMode = mode;
+            SaveTheme();
+        }
+
+        internal void TrayAccent(string hex)
+        {
+            if (string.IsNullOrEmpty(hex)) return;
+            _config.Accent = hex;
+            SaveTheme();
+        }
+
+        internal void TrayExit()
+        {
+            Shutdown();
+            ExitThread();
+        }
+
+        private void CheckUpdatesSilently()
+        {
+            if (Environment.GetEnvironmentVariable("SOUNDWHEEL_NO_UPDATE_CHECK") == "1") return;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    UpdateInfo info = UpdateService.Latest(6000);
+                    if (info == null || info.Version == null) return;
+                    Version cur = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+                    if (info.Version <= cur) return;
+                    _pendingUpdate = info;
+                    Log.Info("发现新版本 " + info.Version.ToString(3) + "（当前 " + cur.ToString(3) + "）");
+                    if (_tray != null)
+                    {
+                        _tray.ShowBalloonTip(10000, "SoundWheel " + info.Version.ToString(3),
+                            "已发布新版本，点击查看下载页面", ToolTipIcon.Info);
+                    }
+                }
+                catch (Exception) { }
+            });
+        }
+
+        private void SaveTheme()
+        {
+            try { _config.Save(AppPaths.ConfigFile); }
+            catch (Exception ex) { Log.Error("保存主题失败", ex); }
+            Theme.Current = Theme.Build(_config.ThemeMode, _config.Accent);
+            if (_menu != null) _menu.ApplyTheme();
+        }
+
+        internal void TrayCheckUpdate()
+        {
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                UpdateInfo info = null;
+                string err = null;
+                try { info = UpdateService.Latest(8000); }
+                catch (Exception ex) { err = ex.Message; }
+                Version cur = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+                if (info == null)
+                {
+                    MessageBox.Show("检查更新失败：" + (err == null ? "无法连接 GitHub" : err), "SoundWheel",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                Version latest = info.Version;
+                if (latest != null && latest > cur)
+                {
+                    if (MessageBox.Show("发现新版本 " + info.Version.ToString(3) + "，当前版本 " + cur.ToString(3) + "。\r\n是否打开下载页面？",
+                        "SoundWheel", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                    {
+                        try { System.Diagnostics.Process.Start(info.PageUrl); }
+                        catch (Exception ex) { Log.Error("打开下载页面失败", ex); }
+                    }
+                }
+                else
+                {
+                    MessageBox.Show("当前已经是最新版本 " + cur.ToString(3) + "。", "SoundWheel",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            });
         }
 
         private static Icon BuildIcon()

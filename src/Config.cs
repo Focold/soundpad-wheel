@@ -42,6 +42,8 @@ namespace SoundWheel
         public int MouseMode = 0;              // 0=自动 1=绝对坐标 2=相对位移
         public double MouseSensitivity = 1.0;  // 相对位移灵敏度
         public bool CaptureMouse = true;       // 打开轮盘时用低级鼠标钩子接管鼠标（吞掉移动/点击）
+        public int ThemeMode = 0;              // 0=跟随系统 1=深色 2=浅色
+        public double FontScale = 1.0;         // 界面字体缩放 0.85 - 1.35
         public List<SlotConfig> Inner = new List<SlotConfig>();
         public List<SlotConfig> Outer = new List<SlotConfig>();
 
@@ -64,6 +66,10 @@ namespace SoundWheel
             if (MouseMode > 2) MouseMode = 2;
             if (MouseSensitivity < 0.2) MouseSensitivity = 0.2;
             if (MouseSensitivity > 4.0) MouseSensitivity = 4.0;
+            if (ThemeMode < 0) ThemeMode = 0;
+            if (ThemeMode > 2) ThemeMode = 2;
+            if (FontScale < 0.85) FontScale = 0.85;
+            if (FontScale > 1.35) FontScale = 1.35;
             while (Inner.Count < 12) Inner.Add(new SlotConfig());
             while (Outer.Count < 16) Outer.Add(new SlotConfig());
             if (Accent == null) Accent = "#5B8CFF";
@@ -95,6 +101,8 @@ namespace SoundWheel
                 cfg.MouseMode = Json.Int(root, "mouseMode", 0);
                 cfg.MouseSensitivity = Json.Dbl(root, "mouseSensitivity", 1.0);
                 cfg.CaptureMouse = Json.Bool(root, "captureMouse", true);
+                cfg.ThemeMode = Json.Int(root, "themeMode", 0);
+                cfg.FontScale = Json.Dbl(root, "fontScale", 1.0);
 
                 ReadSlots(cfg.Inner, Json.GetArr(root, "inner"));
                 ReadSlots(cfg.Outer, Json.GetArr(root, "outer"));
@@ -138,6 +146,8 @@ namespace SoundWheel
             root["mouseMode"] = MouseMode;
             root["mouseSensitivity"] = Math.Round(MouseSensitivity, 2);
             root["captureMouse"] = CaptureMouse;
+            root["themeMode"] = ThemeMode;
+            root["fontScale"] = Math.Round(FontScale, 2);
             root["inner"] = SlotsToJson(Inner);
             root["outer"] = SlotsToJson(Outer);
 

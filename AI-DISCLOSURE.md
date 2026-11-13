@@ -18,7 +18,8 @@
 
 ### AI 直接产出的内容
 
-- `src/*.cs` —— 全部 15 个源文件（约 6,300 行）
+- `src/*.cs` —— 全部 20 个源文件（约 7,000 行，含 2.0 的 Theme/Ui/WheelPreview/TrayMenu/Update）
+- `installer/*.cs` —— 安装 / 卸载向导（Setup.cs + SetupUi.cs）
 - `tools/*.cs` —— MockSoundpad 假服务器、图标生成器与开发期测试工具
 - `build.cmd` / `build.ps1` —— 构建脚本
 - `assets/app.ico` —— 由 `tools/MakeIcon.cs` 程序化绘制（GDI+ 画轮盘 + 手写 ICO 编码器），非第三方素材
@@ -65,6 +66,17 @@
 - 验证：`tools/FakeGame.cs`（编译为 `dist/SimGame.exe`）模拟"无边框全屏 + 每 1200ms 抢回置顶"的游戏窗口，用屏幕像素对照：关闭重试时轮盘中心 = 游戏绿色（被盖住，复现缺陷），开启重试时轮盘中心 = 轮盘深色、轮盘外 = 游戏绿色（可见，修复生效）；截图 `testdataT/B1_crop.png` 目视确认
 - 未验证：真实 Java 版 MC / GLFW 全屏下的表现、与其它全屏游戏的实际叠加兼容性
 
+## v2.0.0 增补（圆角 UI、主题、拖拽装配、安装向导）
+
+用户需求原文（2026-11-13）："改进软件美化 ui 以圆角为主……将小托盘右键 ui 美化，解决切换轮盘布局时偶尔出现无响应的情况，改进切换音效交互，分两部分，左半为轮盘，右半为音效库，拖动音效到轮盘响应位置就可装配，对软件增加深色浅色切换，主题色颜色更多样，对字体大小进行优化，对全屏，无边框，不同分辨率进行兼容优化，修复以前和现在的 bug。制作安装向导(可切换中文英文)，可选择更新(从我的 github 仓库获取最新版本)或重新安装……完成后开源，顺便帮我电脑的更新一下"
+
+- 新增 `src/Theme.cs`（深浅配色 + 12 色 + 系统主题检测）、`src/Ui.cs`（圆角按钮 / 卡片 / 复选框 / 色块 / 分段控件 / 滑杆 / 数字框）、`src/WheelPreview.cs`（可交互轮盘 + 拖放）、`src/TrayMenu.cs`（自绘托盘菜单）、`src/Update.cs`（GitHub Releases 检查与下载）
+- 重写 `src/SettingsForm.cs`：无边框圆角、左侧导航五页、实时换主题、拖拽装配、关于页更新检查
+- 新增 `installer/Setup.cs` + `installer/SetupUi.cs`，编译为 `dist/SoundWheelSetup.exe`（内嵌主程序为资源 `payload.bin`）：双语 UI、免管理员安装到 `%LOCALAPPDATA%\SoundWheel`、GitHub 最新版检查、静默更新、卸载、快捷方式与 HKCU 卸载项；`build.cmd` 增加第 3 步编译安装向导
+- `src/WheelWindow.cs`：定时器回调加异常保护（修复"切换布局后偶尔无响应"）、配色改为由主题驱动、中心只显示名称
+- 版本 1.2.2 → 2.0.0；发布工作流新增上传 `SoundWheelSetup.exe`
+- 验证方式：设置窗口（深色 / 浅色 / 主题页 / 轮盘页 / 游戏与鼠标页）在 150% DPI 下逐页截图；托盘菜单截图；`SoundWheelSetup.exe /S --dir ...` 静默安装后启动安装版并通过日志确认轮盘 / 接管鼠标正常；`/S --uninstall` 卸载后目录与 HKCU 卸载项均被清除；安装向导中英文界面截图
+- 未验证：安装包在全新机器上的 SmartScreen 体验、自动更新在真实旧版本上的完整下载安装链路（测试时 GitHub 最新版仍为 1.2.2）
 ## 验证情况（截至 v1.0.0）
 
 已在 Windows 11 + 150% DPI 的实机上验证：

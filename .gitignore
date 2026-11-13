@@ -19,3 +19,6 @@ testdata/*.err
 *.user
 *.suo
 [Tt]est[Rr]esult*/
+
+testdata*/
+

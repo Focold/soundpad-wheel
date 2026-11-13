@@ -375,6 +375,9 @@ namespace SoundWheel
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool GetClipCursor(out RECT lpRect);
 
+        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
+        public static extern int SetWindowTheme(IntPtr hwnd, string pszSubAppName, string pszSubIdList);
+
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool GetCursorInfo(ref CURSORINFO pci);
 
@@ -428,6 +431,13 @@ namespace SoundWheel
             {
                 return false;
             }
+        }
+
+        // 让系统滚动条 / 下拉框使用深色主题（Win10 1809+ 有效）
+        public static void UseDarkScrollbars(IntPtr hwnd, bool dark)
+        {
+            try { SetWindowTheme(hwnd, dark ? "DarkMode_Explorer" : "Explorer", null); }
+            catch (Exception) { }
         }
 
         public static bool CursorHidden()

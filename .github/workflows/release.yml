@@ -30,6 +30,7 @@ jobs:
           name: SoundWheel ${{ github.ref_name }}
           body_path: note.md
           files: |
+            dist/SoundWheelSetup.exe
             dist/SoundWheel.exe
             dist/MockSoundpad.exe
           fail_on_unmatched_files: false

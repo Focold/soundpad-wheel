@@ -311,7 +311,20 @@ namespace SoundWheel
         private void OnTick(object sender, EventArgs e)
         {
             if (!_shown) return;
+            try
+            {
+                TickOnce();
+            }
+            catch (Exception ex)
+            {
+                // 任何异常都不能让定时器死掉，否则轮盘会看起来"卡住/无响应"
+                _frameDirty = false;
+                Log.Error("轮盘定时器异常（已忽略本帧）", ex);
+            }
+        }
 
+        private void TickOnce()
+        {
             DateTime now = DateTime.UtcNow;
             float dt = (float)(now - _lastTick).TotalMilliseconds;
             _lastTick = now;
@@ -873,7 +886,9 @@ namespace SoundWheel
             float span = 360f / n;
             using (GraphicsPath path = SegmentPath(rIn, rOut, _hoverSlot * span + pad, (_hoverSlot + 1) * span - pad))
             {
-                Color fill = items[_hoverSlot].Assigned ? _config.AccentColor : Color.FromArgb(255, 58, 66, 84);
+                Theme th = Theme.Current;
+            Color fill = items[_hoverSlot].Assigned ? _config.AccentColor
+                : (th.Dark ? Color.FromArgb(255, 58, 66, 84) : Color.FromArgb(255, 214, 222, 236));
                 using (SolidBrush brush = new SolidBrush(Color.FromArgb(A(246), fill)))
                     g.FillPath(brush, path);
             }
@@ -885,8 +900,9 @@ namespace SoundWheel
             if (n <= 0) return;
             float span = 360f / n;
             float pad = inner ? 0.6f : 0.9f;
-            Color baseFill = inner ? Color.FromArgb(255, 27, 31, 41) : Color.FromArgb(255, 22, 26, 34);
-            Color emptyFill = Color.FromArgb(255, 17, 20, 26);
+            Theme th = Theme.Current;
+            Color baseFill = inner ? th.WheelInner : th.WheelOuter;
+            Color emptyFill = th.WheelEmpty;
             for (int i = 0; i < n; i++)
             {
                 using (GraphicsPath path = SegmentPath(rIn, rOut, i * span + pad, (i + 1) * span - pad))
@@ -949,9 +965,12 @@ namespace SoundWheel
         {
             DisposeFonts();
             float scale = _geo.Scale;
-            _innerFont = MakeFont(13f * scale, false);
-            _outerFont = MakeFont(13f * scale, false);
-            _hubFont = MakeFont(15f * scale, true);
+            float fs = (float)_config.FontScale;
+            if (fs < 0.8f) fs = 0.8f;
+            if (fs > 1.4f) fs = 1.4f;
+            _innerFont = MakeFont(13f * scale * fs, false);
+            _outerFont = MakeFont(13f * scale * fs, false);
+            _hubFont = MakeFont(15f * scale * fs, true);
         }
 
         private void DisposeFonts()
@@ -973,7 +992,7 @@ namespace SoundWheel
         {
             float r = _geo.OuterCount > 0 ? _geo.OuterOut : _geo.InnerOut;
             float cx = _geo.Center;
-            using (SolidBrush brush = new SolidBrush(Color.FromArgb(A(232), 11, 14, 20)))
+            using (SolidBrush brush = new SolidBrush(Color.FromArgb(A(232), Theme.Current.WheelBase)))
             {
                 g.FillEllipse(brush, cx - r, cx - r, r * 2f, r * 2f);
             }
@@ -991,8 +1010,8 @@ namespace SoundWheel
 
             string text = item.Assigned && !string.IsNullOrEmpty(item.Title) ? item.Title : "空闲";
             Color color = item.Assigned
-                ? Color.FromArgb(A(232), 236, 241, 250)
-                : Color.FromArgb(A(95), 200, 208, 224);
+                ? Color.FromArgb(A(232), Theme.Current.WheelText)
+                : Color.FromArgb(A(95), Theme.Current.WheelTextDim);
 
             float lineHeight = font.GetHeight(g) * 1.45f;
             using (StringFormat format = new StringFormat())
@@ -1064,7 +1083,7 @@ namespace SoundWheel
             float r = _geo.HubR;
             RectangleF rect = new RectangleF(cx - r, cy - r, r * 2f, r * 2f);
 
-            using (SolidBrush fill = new SolidBrush(Color.FromArgb(A(244), 14, 17, 23)))
+            using (SolidBrush fill = new SolidBrush(Color.FromArgb(A(244), Theme.Current.HubBg)))
             {
                 g.FillEllipse(fill, rect);
             }
@@ -1077,8 +1096,8 @@ namespace SoundWheel
             bool assigned = item != null && item.Assigned;
             string title = assigned ? item.Title : (item == null ? "选择音效" : "空闲");
             Color color = assigned
-                ? Color.FromArgb(A(252), 255, 255, 255)
-                : Color.FromArgb(A(170), 214, 221, 236);
+                ? Color.FromArgb(A(252), Theme.Current.WheelText)
+                : Color.FromArgb(A(170), Theme.Current.WheelTextDim);
 
             float textWidth = r * 2f * 0.80f;
             float lineHeight = titleFont.GetHeight(g) * 1.5f;

@@ -3,6 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![AI Generated](https://img.shields.io/badge/content-AI--generated-8A2BE2.svg)](AI-DISCLOSURE.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey.svg)](#requirements)
+[![Version](https://img.shields.io/badge/version-2.0.0-success.svg)](CHANGELOG.md)
 
 > [!IMPORTANT]
 > **AI-generated project.** Almost everything here — the C# sources, scripts, docs and the icon — was produced by an **AI coding agent** (DeepSeek Harness, model `deepseek-flash`) in a single session on 2026-11-07. A human supplied the requirements, the test machine and the verification. See **[AI-DISCLOSURE.md](AI-DISCLOSURE.md)** for scope, validation and disclaimers.
@@ -29,7 +30,10 @@ SoundWheel is a standalone single-file `.exe` (no runtime install). It drives So
 - **Hover feedback** — the hovered sector lights up, its name shows in the centre hub, and a small dot marks the pointer
 - **Playback target** — microphone only / speakers only / both
 - **Tray resident** — open wheel, settings, refresh list, open data folder, quit
-- **Appearance** — overall scale 70–160 %, accent colour, slot counts, animations
+- **Appearance** — overall scale 70–160 %, UI font scale 85–135 %, slot counts, animations
+- **Dark / light themes** — follow Windows or force either mode, 12 accent presets plus a custom colour; the wheel, the settings window and the tray menu all recolour together
+- **Drag & drop assignment** — the Wheel page shows the wheel on the left and the sound library on the right; drag a sound onto a sector (or select a sector and double-click a sound)
+- **Setup wizard** (new in 2.0) — Chinese / English, installs per-user to `%LOCALAPPDATA%\SoundWheel` without admin rights, checks GitHub for updates, can reinstall or uninstall
 - **Optional run at login** (per-user `HKCU\...\Run` entry, no admin rights)
 - **Optional toast** after playback
 
@@ -50,15 +54,61 @@ Soundpad's remote control is enabled by default; no option has to be ticked.
 
 ## Quick start
 
-1. Run `SoundWheel.exe` (download from Releases, or build it yourself with `build.cmd`); a wheel icon appears in the tray
-2. Right-click the tray icon → **设置…** (Settings)
-3. Go to the **轮盘布局** (Wheel layout) tab → **刷新音效列表** (Refresh) → assign sounds to inner/outer slots → **保存** (Save)
+1. Download **`SoundWheelSetup.exe`** from [Releases](https://github.com/Focold/soundpad-wheel/releases) and run it, then press Install (see [Install & update](#install--update)); the standalone `SoundWheel.exe` still works if you prefer no installer
+2. A wheel icon appears in the tray — right-click it → **Settings…**
+3. Open the **Wheel** page → **Refresh** on the right → drag sounds from the library onto the wheel sectors (or select a sector, then double-click a sound) → **Save**
 4. Back in your game, hold `Ctrl + Alt + W`, move to a sector, release
 
 ![Settings](assets/settings.png)
 
-> The UI is currently Chinese-only. The five tabs are: General · Wheel layout · Sound library · Game & mouse · About.
-> Bottom bar: **Preview wheel** · **Save** · **Cancel**.
+---
+
+## Install & update
+
+Run `SoundWheelSetup.exe`. The wizard reads the version installed on this PC and the latest version on GitHub:
+
+- Per-user install to `%LOCALAPPDATA%\SoundWheel` (override with `--dir <folder>`), no admin rights
+- Optional **launch after install** and **desktop shortcut**; a Start-menu shortcut is always created
+- If the installed version is already the latest, it asks "You already have the latest version X. Reinstall?" before overwriting
+- Switch between **中文 / English** at any time
+- Uninstall from Windows *Apps & features*, or run `SoundWheelSetup.exe --uninstall` (optionally deleting config and logs)
+
+**Updates** can be started from three places, all fed by [GitHub Releases](https://github.com/Focold/soundpad-wheel/releases):
+
+| Entry | Behaviour |
+| --- | --- |
+| Setup wizard | Checks on launch; the main button becomes **Download & update**, which fetches `SoundWheelSetup.exe` and installs silently into the same folder |
+| Settings → About | **Check for updates** / **Download & install** buttons |
+| App start (silent) | One background check; a tray balloon appears when a newer version exists. Disable with `SOUNDWHEEL_NO_UPDATE_CHECK=1` |
+
+Install and update close the running old version automatically (the tray icon disappearing is expected) and **keep your `%APPDATA%\SoundWheel` configuration**.
+
+![Setup wizard](assets/setup.png)
+
+**Silent command line:**
+
+```cmd
+SoundWheelSetup.exe /S --dir "%LOCALAPPDATA%\SoundWheel"
+SoundWheelSetup.exe /S --uninstall
+```
+
+---
+
+## Settings window
+
+A **borderless rounded** window with navigation on the left (General / Wheel / Theme / Game & mouse / About), content cards on the right, and **Preview wheel · Save · Cancel** pinned at the bottom; drag the title area to move it, Esc closes it.
+
+| Page | Contents |
+| --- | --- |
+| **General** | Hotkey (click the box and press a combo; Backspace clears), click-to-play mode, playback target (mic / speakers / toast), wheel scale, slot counts, animations, run at login, data folder, quick help |
+| **Wheel** | Interactive wheel preview on the left, sound library on the right: **drag** a sound onto a sector, or select a sector then double-click a sound; right-click a sector to clear it |
+| **Theme** | Follow system / dark / light, 12 accent presets + custom colour, UI font scale 85–135 %, live wheel preview |
+| **Game & mouse** | Capture the mouse (default on), tracking mode (auto / absolute / relative), sensitivity, mouse self-check, FPS notes |
+| **About** | Version, **check for updates / download & install**, data folder, repository links |
+
+Theme changes apply to the wheel, the settings window and the tray menu; save and the next wheel you open uses the new colours.
+
+![Wheel page](assets/wheel-page.png)
 
 ---
 
@@ -160,10 +210,25 @@ SoundWheel.exe [--data <dir>] [--preview [seconds]] [--settings] [--debug-keys] 
 | `--debug-keys` | Log raw key states (diagnose hold/release problems) |
 | `--debug-mouse` | Log every raw mouse delta and tracking-mode switch (diagnose a frozen pointer in games) |
 
-Environment variable `SOUNDWHEEL_TOPMOST_MS`: interval for re-asserting the wheel on top (milliseconds, default `250`;
-`0` means "raise once when opening, no periodic retry").
+Environment variables:
+
+- `SOUNDWHEEL_TOPMOST_MS` — interval for re-asserting the wheel on top (ms, default `250`; `0` means "raise once when opening")
+- `SOUNDWHEEL_NO_UPDATE_CHECK=1` — skip the silent update check at start-up
+- `SOUNDWHEEL_DEBUG_MOUSE=1` / `SOUNDWHEEL_DEBUG_KEYS=1` — same as the corresponding command-line switches
 
 Only one instance may run at a time.
+
+---
+
+## Tray menu
+
+Since 2.0 the tray menu is a **custom-drawn rounded menu** that follows the theme and shows the version, the Soundpad connection state and the current hotkey at the top:
+
+**Open wheel** · **Settings…** · **Theme** (follow system / dark / light + 12 accent swatches) · **Refresh sound list** · **Open data folder** · **Check for updates…** · **Quit**
+
+(double-click the tray icon = open wheel)
+
+![Tray menu](assets/tray.png)
 
 ---
 
@@ -175,9 +240,13 @@ No Visual Studio / .NET SDK needed — only the C# 5 compiler bundled with the .
 build.cmd
 ```
 
-Outputs `dist\SoundWheel.exe` (single file, icon embedded) and `dist\MockSoundpad.exe` (a fake Soundpad for
-development). A PowerShell equivalent exists as `build.ps1` (requires
-`Set-ExecutionPolicy -Scope Process Bypass`).
+Outputs:
+
+- `dist\SoundWheel.exe` — the app (single file, icon embedded)
+- `dist\SoundWheelSetup.exe` — the setup wizard (embeds the app as a resource; bilingual, update check, uninstall)
+- `dist\MockSoundpad.exe` — a fake Soundpad for development
+
+A PowerShell equivalent exists as `build.ps1` (requires `Set-ExecutionPolicy -Scope Process Bypass`).
 
 **Language constraint:** the build must stay C# 5 compatible — no string interpolation, `?.`, `nameof`,
 expression-bodied members, tuples, `out var` or auto-property initialisers.
@@ -210,7 +279,7 @@ A ready-made example configuration is included in `examples\testdata`.
   `轮盘持续被前台全屏窗口遮挡`. The latter means the game uses **exclusive fullscreen**: switch it to windowed or
   borderless fullscreen. Tune the retry rate with `SOUNDWHEEL_TOPMOST_MS` (`0` disables the periodic retry).
 - **Wrong sound plays** — the order changed inside Soundpad; refresh the list (matching is title-first).
-- **Wheel opens in a game but the pointer will not move** — Settings → **Game & mouse** → **检测鼠标状态** to see
+- **Wheel opens in a game but the pointer will not move** — Settings → **Game & mouse** → **Mouse self-check** to see
   whether the cursor is hidden or clipped; switch tracking to **Relative**; try windowed/borderless mode; run with
   `--debug-mouse` and check the log for the "no hook events" / "no raw input within 1.6 s" warnings.
 - **Mouse captured but the camera still turns** — a few games read raw input directly; use hold mode, or run the game
@@ -229,7 +298,10 @@ A ready-made example configuration is included in `examples\testdata`.
   re-assert itself on top, which covers borderless fullscreen games)
 - The pointer is derived from hook events / cursor position, so a badly stuttering game may lag it by a frame or two
 - Playback/stop only — it never edits audio or Soundpad's own data
-- UI is Chinese-only; tested on Windows 11 at 150 % DPI
+- The settings UI is Chinese; the setup wizard and the README are bilingual (Chinese / English)
+- The setup wizard is not code-signed, so SmartScreen may ask for *More info → Run anyway* the first time
+- Update checks need access to github.com and api.github.com
+- Tested on Windows 11 at 150 % DPI
 
 ---
 

@@ -12,7 +12,9 @@
 build.cmd
 ```
 
-产物在 `dist/SoundWheel.exe` 与 `dist/MockSoundpad.exe`。
+产物在 `dist/SoundWheel.exe`、`dist/MockSoundpad.exe` 与 `dist/SoundWheelSetup.exe`（安装向导，主程序作为资源 `payload.bin` 内嵌）。
+
+installer\ 下的两个文件单独编译；`build.cmd` 已包含这一步。改动界面文案或安装逻辑后请重新生成安装包并手动跑一次 `/S --dir <临时目录>` 安装与 `/S --uninstall --dir <临时目录>` 卸载。
 
 ## 重要：语言版本限制
 
