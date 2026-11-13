@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![AI Generated](https://img.shields.io/badge/content-AI--generated-8A2BE2.svg)](AI-DISCLOSURE.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey.svg)](#系统要求)
-[![Version](https://img.shields.io/badge/version-2.0.0-success.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.0.1-success.svg)](CHANGELOG.md)
 [![Build](https://github.com/Focold/soundpad-wheel/actions/workflows/build.yml/badge.svg)](https://github.com/Focold/soundpad-wheel/actions/workflows/build.yml)
 
 > [!IMPORTANT]

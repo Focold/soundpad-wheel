@@ -212,7 +212,7 @@ namespace SoundWheel
             _sidebar.Controls.Add(brand);
 
             Label ver = new Label();
-            ver.Text = "2.0.0";
+            ver.Text = UpdateService.CurrentVersion.ToString(3);
             ver.AutoSize = false;
             ver.Bounds = new Rectangle(S(23), S(48), S(100), S(20));
             ver.Font = _fontTiny;

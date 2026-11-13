@@ -36,6 +36,27 @@ namespace SoundWheelSetup
             get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SoundWheel"); }
         }
 
+        public static string LogPath
+        {
+            get { return Path.Combine(Path.GetTempPath(), "SoundWheelSetup.log"); }
+        }
+
+        public static void Log(string message)
+        {
+            string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " " + message + Environment.NewLine;
+            string[] targets = new string[]
+            {
+                Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "SoundWheelSetup.log"),
+                Path.Combine(Path.GetTempPath(), "SoundWheelSetup.log"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SoundWheelSetup.log")
+            };
+            for (int i = 0; i < targets.Length; i++)
+            {
+                try { File.AppendAllText(targets[i], line, Encoding.UTF8); }
+                catch (Exception) { }
+            }
+        }
+
         [STAThread]
         private static void Main(string[] args)
         {
@@ -51,6 +72,7 @@ namespace SoundWheelSetup
             }
 
             if (Environment.GetEnvironmentVariable("SOUNDWHEEL_SETUP_EN") == "1") L.English = true;
+            Log("start silent=" + silent + " uninstall=" + uninstall + " dir=" + dir + " args=" + string.Join(" ", args));
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -59,7 +81,7 @@ namespace SoundWheelSetup
 
             if (uninstall)
             {
-                if (silent) { Installer.DoUninstall(dir, false); return; }
+                if (silent) { bool ok = Installer.DoUninstall(dir, false); Log("uninstall silent ok=" + ok); if (!ok) Environment.ExitCode = 1; return; }
                 Application.Run(new InstallerForm(dir, true));
                 return;
             }
@@ -69,8 +91,10 @@ namespace SoundWheelSetup
                 string error;
                 if (!Installer.DoInstall(dir, true, true, true, out error))
                 {
-                    MessageBox.Show("安装失败：" + error, AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    Log("install failed: " + error);
+                    Environment.ExitCode = 1;
                 }
+                else Log("install ok");
                 return;
             }
 
@@ -155,9 +179,12 @@ namespace SoundWheelSetup
             error = null;
             try
             {
+                Program.Log("DoInstall dir=" + dir);
                 Directory.CreateDirectory(dir);
+                Program.Log("dir ok");
                 KillRunning(Program.AppName);
                 byte[] payload = ReadPayload();
+                Program.Log("payload bytes=" + payload.Length);
                 string exe = TargetExe(dir);
                 bool written = false;
                 for (int attempt = 0; attempt < 12 && !written; attempt++)
@@ -179,6 +206,7 @@ namespace SoundWheelSetup
                     }
                 }
                 if (!written) throw new IOException("无法写入 " + exe);
+                Program.Log("payload written " + exe);
 
                 string self = TargetSetup(dir);
                 try
@@ -188,9 +216,10 @@ namespace SoundWheelSetup
                 }
                 catch (Exception) { }
 
-                try { RegisterUninstall(dir, exe); }
-                catch (Exception) { }
-                CreateShortcuts(dir, exe, desktopShortcut);
+                try { RegisterUninstall(dir, exe); Program.Log("registry ok"); }
+                catch (Exception ex) { Program.Log("registry failed: " + ex.Message); }
+                try { CreateShortcuts(dir, exe, desktopShortcut); Program.Log("shortcuts ok"); }
+                catch (Exception ex) { Program.Log("shortcuts failed: " + ex.Message); }
 
                 if (launch)
                 {
@@ -202,6 +231,7 @@ namespace SoundWheelSetup
             catch (Exception ex)
             {
                 error = ex.Message;
+                Program.Log("DoInstall exception: " + ex);
                 return false;
             }
         }
